@@ -119,6 +119,36 @@ create index if not exists activity_chemical_id_idx on public.activity_log (chem
 create index if not exists activity_user_id_idx     on public.activity_log (user_id);
 
 -- ---------------------------------------------------------------------------
+-- invites — a durable record that an invite was sent, independent of whether
+-- the person has opened the email yet.
+--
+-- Without this, "invite someone" was fire-and-forget: it triggered an email
+-- and nothing else, so there was no way to tell whether it actually went out,
+-- who was invited, or when — it just looked like it vanished. The Members
+-- page now lists every row here whose email doesn't yet match a profile as
+-- "invited, not yet joined".
+-- ---------------------------------------------------------------------------
+create table if not exists public.invites (
+  id               uuid primary key default gen_random_uuid(),
+  email            text not null,
+  full_name        text,
+  invited_by       uuid references auth.users on delete set null,
+  invited_by_name  text,
+  created_at       timestamptz not null default now()
+);
+
+create index if not exists invites_email_idx on public.invites (lower(email));
+
+alter table public.invites enable row level security;
+
+drop policy if exists "admins manage invites" on public.invites;
+create policy "admins manage invites"
+  on public.invites for all
+  to authenticated
+  using (public.is_approved() and public.current_user_role() = 'admin')
+  with check (public.is_approved() and public.current_user_role() = 'admin');
+
+-- ---------------------------------------------------------------------------
 -- Helpers
 -- ---------------------------------------------------------------------------
 

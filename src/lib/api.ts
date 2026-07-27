@@ -14,6 +14,7 @@ import type {
   ActivityEntry,
   Chemical,
   ChemicalInput,
+  Invite,
   Profile,
   Role,
 } from './types'
@@ -447,6 +448,42 @@ export const api = {
       .order('created_at', { ascending: true })
     if (error) fail('Could not load the member list', error)
     return (data ?? []) as Profile[]
+  },
+
+  /** Every invite ever sent — the Members page filters out the ones who've
+   *  since actually joined (i.e. now have a matching profile). */
+  async listInvites(): Promise<Invite[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('invites')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) fail('Could not load invites', error)
+    return (data ?? []) as Invite[]
+  },
+
+  /** Sends the sign-in email and records that it happened, in one step —
+   *  the record is what stops an invite from feeling like it vanished. */
+  async sendInvite(email: string, fullName: string, actor: Profile): Promise<Invite> {
+    await auth.inviteMember(email, fullName)
+    const { data, error } = await requireSupabase()
+      .from('invites')
+      .insert({
+        email: email.trim(),
+        full_name: fullName.trim() || null,
+        invited_by: actor.id,
+        invited_by_name: actor.full_name,
+      })
+      .select()
+      .single()
+    if (error) fail('Invite email sent, but could not save the record of it', error)
+    await api.log(null, 'invited', `Invited ${fullName.trim() || email.trim()} (${email.trim()})`, actor)
+    return data as Invite
+  },
+
+  async cancelInvite(id: string): Promise<void> {
+    const { error } = await requireSupabase().from('invites').delete().eq('id', id)
+    if (error) fail('Could not remove that invite', error)
   },
 
   async setRole(target: Profile, role: Role, actor: Profile): Promise<void> {

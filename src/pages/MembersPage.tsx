@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Check, Mail, ShieldCheck, UserPlus, Users } from 'lucide-react'
+import { Check, Mail, RotateCw, ShieldCheck, UserPlus, Users, X } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, Field, LoadingScreen, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
-import { auth, api } from '../lib/api'
+import { api, auth } from '../lib/api'
 import { MODE } from '../lib/config'
-import type { Profile, Role } from '../lib/types'
+import type { Invite, Profile, Role } from '../lib/types'
 import { formatDate, formatRelative } from '../lib/utils'
 
 const ROLE_HELP: Record<Role, string> = {
@@ -20,6 +20,7 @@ export default function MembersPage() {
   const toast = useToast()
 
   const [members, setMembers] = useState<Profile[]>([])
+  const [invites, setInvites] = useState<Invite[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
 
@@ -27,19 +28,36 @@ export default function MembersPage() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
 
+  function load() {
+    return Promise.all([api.listProfiles(), api.listInvites()]).then(([m, i]) => {
+      setMembers(m)
+      setInvites(i)
+    })
+  }
+
   useEffect(() => {
-    api
-      .listProfiles()
-      .then(setMembers)
+    load()
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Could not load members.'))
       .finally(() => setLoading(false))
-  }, [toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const pending = useMemo(
     () => members.filter((m) => !m.approved).sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [members],
   )
   const approvedMembers = useMemo(() => members.filter((m) => m.approved), [members])
+
+  // An invite "resolves" the moment its email shows up as a real account —
+  // pending or approved, it doesn't matter, it's no longer just an email
+  // that vanished into the void.
+  const outstandingInvites = useMemo(
+    () =>
+      invites.filter(
+        (inv) => !members.some((m) => m.email.toLowerCase() === inv.email.toLowerCase()),
+      ),
+    [invites, members],
+  )
 
   async function sendInvite(e: FormEvent) {
     e.preventDefault()
@@ -48,18 +66,16 @@ export default function MembersPage() {
     if (members.some((m) => m.email.toLowerCase() === inviteEmail.trim().toLowerCase())) {
       return toast.error('That email already has an account — approve it below instead.')
     }
+    if (outstandingInvites.some((inv) => inv.email.toLowerCase() === inviteEmail.trim().toLowerCase())) {
+      return toast.error('Already invited — use Resend below instead of inviting again.')
+    }
 
     setInviting(true)
     try {
-      await auth.inviteMember(inviteEmail, inviteName)
-      await api.log(
-        null,
-        'invited',
-        `Invited ${inviteName.trim() || inviteEmail.trim()} (${inviteEmail.trim()})`,
-        profile,
-      )
+      const invite = await api.sendInvite(inviteEmail, inviteName, profile)
+      setInvites((prev) => [invite, ...prev])
       toast.success(
-        `Invite sent to ${inviteEmail}. They'll show up below, waiting for approval, once they open the link.`,
+        `Invite sent to ${inviteEmail}. If they don't see it, check spam — see Settings for why that happens.`,
       )
       setInviteName('')
       setInviteEmail('')
@@ -67,6 +83,30 @@ export default function MembersPage() {
       toast.error(err instanceof Error ? err.message : 'Could not send that invite.')
     } finally {
       setInviting(false)
+    }
+  }
+
+  async function resend(inv: Invite) {
+    setSaving(inv.id)
+    try {
+      await auth.inviteMember(inv.email, inv.full_name ?? '')
+      toast.success(`Invite re-sent to ${inv.email}.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not resend that invite.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  async function cancel(inv: Invite) {
+    setSaving(inv.id)
+    try {
+      await api.cancelInvite(inv.id)
+      setInvites((prev) => prev.filter((i) => i.id !== inv.id))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove that invite.')
+    } finally {
+      setSaving(null)
     }
   }
 
@@ -128,7 +168,7 @@ export default function MembersPage() {
         </h2>
         <p className="mb-3 text-xs text-ink-500 dark:text-ink-400">
           {MODE === 'cloud'
-            ? 'Sends a one-click sign-in link. They still have to open it to actually create the account — there\'s no way around that without your admin, no password to hand them — but it saves them finding the app themselves.'
+            ? 'Sends a one-click sign-in link. They still have to open it to actually create the account — there\'s no way around that without a password to hand them — but it saves them finding the app themselves. It\'s recorded below the moment you send it, so it can\'t quietly disappear.'
             : 'Demo mode has no email to send — anyone can just sign up directly from the login page instead.'}
         </p>
         <form onSubmit={(e) => void sendInvite(e)} className="flex flex-wrap items-end gap-2">
@@ -160,6 +200,51 @@ export default function MembersPage() {
           </button>
         </form>
       </section>
+
+      {/* invited, not yet joined ------------------------------------------------ */}
+      {outstandingInvites.length > 0 && (
+        <section className="card mb-4">
+          <div className="flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-4 py-2.5 dark:border-ink-800 dark:bg-ink-950/50">
+            <Mail className="h-4 w-4 text-ink-500" />
+            <h2 className="text-sm font-semibold text-ink-700 dark:text-ink-200">
+              Invited, not yet joined ({outstandingInvites.length})
+            </h2>
+          </div>
+          <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+            {outstandingInvites.map((inv) => (
+              <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-ink-900 dark:text-ink-50">
+                    {inv.full_name || inv.email}
+                  </p>
+                  <p className="text-xs text-ink-500">
+                    {inv.email} · invited by {inv.invited_by_name ?? 'an admin'} ·{' '}
+                    {formatRelative(inv.created_at)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    className="btn-secondary py-1.5"
+                    disabled={saving === inv.id}
+                    onClick={() => void resend(inv)}
+                    title="Send the sign-in email again"
+                  >
+                    {saving === inv.id ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />} Resend
+                  </button>
+                  <button
+                    className="btn-ghost py-1.5 text-ink-500"
+                    disabled={saving === inv.id}
+                    onClick={() => void cancel(inv)}
+                    title="Remove this invite"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* pending approval ---------------------------------------------------- */}
       {pending.length > 0 && (
@@ -270,7 +355,9 @@ export default function MembersPage() {
         <p className="mt-4 text-xs text-ink-400">
           These rules are enforced by the database itself, not just by the interface — an
           unapproved account cannot read a single row of the inventory even with the browser
-          console open, and a viewer cannot write to it.
+          console open, and a viewer cannot write to it. A role can only be set once someone
+          actually has an account — that's what separates "invited" from "waiting for approval"
+          above.
         </p>
       </div>
     </>

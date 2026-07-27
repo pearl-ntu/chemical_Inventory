@@ -85,6 +85,20 @@ export interface Profile {
   created_at: string
 }
 
+/**
+ * A record that an invite email was sent — exists independently of whether
+ * the recipient has opened it yet, so "who did we invite, and when" survives
+ * even before they show up as an actual account.
+ */
+export interface Invite {
+  id: string
+  email: string
+  full_name: string | null
+  invited_by: string | null
+  invited_by_name: string | null
+  created_at: string
+}
+
 export type ActivityAction =
   | 'created'
   | 'updated'
