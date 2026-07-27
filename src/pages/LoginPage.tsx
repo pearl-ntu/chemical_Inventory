@@ -1,5 +1,16 @@
 import { useState, type FormEvent } from 'react'
-import { AlertTriangle, ArrowRight, Beaker, Eye, EyeOff, Lock, Mail, User } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowRight,
+  Beaker,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Lock,
+  Mail,
+  MailCheck,
+  User,
+} from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { Field, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -9,21 +20,60 @@ import { ALLOWED_EMAIL_DOMAINS, LAB_SUBTITLE, MODE, emailDomainAllowed } from '.
 import { cx } from '../lib/utils'
 
 type Tab = 'signin' | 'signup'
+type Method = 'magic' | 'password'
 
 export default function LoginPage() {
   const { signIn, signUp } = useAuth()
   const toast = useToast()
 
   const [tab, setTab] = useState<Tab>('signin')
+  // Magic link is the default for the cloud build — nothing to remember, and
+  // nobody has to invent a password just to check a shelf. Demo mode has no
+  // mail server behind it, so it falls back to a password there.
+  const [method, setMethod] = useState<Method>(MODE === 'cloud' ? 'magic' : 'password')
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [googleBusy, setGoogleBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [linkSent, setLinkSent] = useState(false)
 
-  async function onSubmit(e: FormEvent) {
+  function switchTab(t: Tab) {
+    setTab(t)
+    setError(null)
+    setNotice(null)
+    setLinkSent(false)
+  }
+
+  async function onSubmitMagicLink(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setNotice(null)
+    if (!email.trim()) return setError('Enter your email address.')
+    if (tab === 'signup') {
+      if (!fullName.trim()) return setError('Please enter your name — it appears on every entry you add.')
+      if (!emailDomainAllowed(email)) {
+        return setError(
+          `Sign-ups are limited to ${ALLOWED_EMAIL_DOMAINS.join(', ')} addresses. Ask an admin if you need an exception.`,
+        )
+      }
+    }
+    setBusy(true)
+    try {
+      await auth.sendMagicLink(email)
+      setLinkSent(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send the link. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onSubmitPassword(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setNotice(null)
@@ -69,6 +119,25 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : 'Could not send the reset email.')
     }
   }
+
+  async function onGoogle() {
+    setError(null)
+    setGoogleBusy(true)
+    try {
+      // The browser navigates away to Google on success, so there is
+      // normally nothing to clean up here — this only returns on failure.
+      await auth.signInWithGoogle()
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not start Google sign-in. Ask an admin whether it has been enabled for this project.',
+      )
+      setGoogleBusy(false)
+    }
+  }
+
+  const showMagicLinkOption = MODE === 'cloud'
 
   return (
     <div className="grid min-h-full lg:grid-cols-2">
@@ -147,11 +216,7 @@ export default function LoginPage() {
             {(['signin', 'signup'] as Tab[]).map((t) => (
               <button
                 key={t}
-                onClick={() => {
-                  setTab(t)
-                  setError(null)
-                  setNotice(null)
-                }}
+                onClick={() => switchTab(t)}
                 className={cx(
                   'rounded-md px-3 py-1.5 text-sm font-semibold transition-colors',
                   tab === t
@@ -164,100 +229,219 @@ export default function LoginPage() {
             ))}
           </div>
 
-          <form onSubmit={onSubmit} className="mt-5 space-y-4">
-            {tab === 'signup' && (
-              <Field label="Full name" required hint="Shown next to entries you register.">
+          {/* Google — always the first choice on screen when it is available */}
+          {MODE === 'cloud' && (
+            <>
+              <button
+                type="button"
+                onClick={() => void onGoogle()}
+                disabled={googleBusy}
+                className="btn-secondary mt-5 w-full"
+              >
+                {googleBusy ? <Spinner /> : <GoogleIcon className="h-4 w-4" />}
+                Continue with Google
+              </button>
+              <div className="my-4 flex items-center gap-3 text-xs text-ink-400">
+                <span className="h-px flex-1 bg-ink-200 dark:bg-ink-700" />
+                or with your email
+                <span className="h-px flex-1 bg-ink-200 dark:bg-ink-700" />
+              </div>
+            </>
+          )}
+
+          {showMagicLinkOption && (
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg border border-ink-200 p-1 text-xs dark:border-ink-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setMethod('magic')
+                  setError(null)
+                  setNotice(null)
+                  setLinkSent(false)
+                }}
+                className={cx(
+                  'flex items-center justify-center gap-1.5 rounded-md py-1.5 font-semibold transition-colors',
+                  method === 'magic'
+                    ? 'bg-pearl-600 text-white'
+                    : 'text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-800',
+                )}
+              >
+                <MailCheck className="h-3.5 w-3.5" /> Email link
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMethod('password')
+                  setError(null)
+                  setNotice(null)
+                }}
+                className={cx(
+                  'flex items-center justify-center gap-1.5 rounded-md py-1.5 font-semibold transition-colors',
+                  method === 'password'
+                    ? 'bg-pearl-600 text-white'
+                    : 'text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-800',
+                )}
+              >
+                <KeyRound className="h-3.5 w-3.5" /> Password
+              </button>
+            </div>
+          )}
+
+          {/* ---------------------------------------------------- magic link */}
+          {method === 'magic' && showMagicLinkOption ? (
+            linkSent ? (
+              <div className="rounded-xl border border-pearl-200 bg-pearl-50 p-4 text-sm dark:border-pearl-500/30 dark:bg-pearl-500/10">
+                <div className="flex items-center gap-2 font-semibold text-pearl-900 dark:text-pearl-100">
+                  <MailCheck className="h-4 w-4" /> Check your inbox
+                </div>
+                <p className="mt-1.5 leading-relaxed text-pearl-800 dark:text-pearl-100/80">
+                  We sent a sign-in link to <strong>{email}</strong>. Open it on this device and
+                  you're in — no password needed. The link expires after an hour.
+                </p>
+                <button
+                  className="mt-3 text-xs font-semibold text-pearl-700 underline dark:text-pearl-300"
+                  onClick={() => setLinkSent(false)}
+                >
+                  Use a different email
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={onSubmitMagicLink} className="space-y-4">
+                {tab === 'signup' && (
+                  <Field label="Full name" required hint="Shown next to entries you register.">
+                    <div className="relative">
+                      <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                      <input
+                        className="input pl-9"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Dr. Takuya Tanaka"
+                        autoComplete="name"
+                      />
+                    </div>
+                  </Field>
+                )}
+                <Field
+                  label="Email"
+                  required
+                  hint={
+                    tab === 'signup' && ALLOWED_EMAIL_DOMAINS.length > 0
+                      ? `Use your ${ALLOWED_EMAIL_DOMAINS[0]} address.`
+                      : 'We’ll email you a one-click sign-in link.'
+                  }
+                >
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                    <input
+                      className="input pl-9"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@e.ntu.edu.sg"
+                      autoComplete="email"
+                      autoFocus
+                    />
+                  </div>
+                </Field>
+
+                {error && <ErrorBanner message={error} />}
+                {notice && <NoticeBanner message={notice} />}
+
+                <button type="submit" className="btn-primary w-full" disabled={busy}>
+                  {busy ? <Spinner /> : <MailCheck className="h-4 w-4" />}
+                  Send me a sign-in link
+                </button>
+              </form>
+            )
+          ) : (
+            /* -------------------------------------------------- password --- */
+            <form onSubmit={onSubmitPassword} className="space-y-4">
+              {tab === 'signup' && (
+                <Field label="Full name" required hint="Shown next to entries you register.">
+                  <div className="relative">
+                    <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                    <input
+                      className="input pl-9"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Dr. Takuya Tanaka"
+                      autoComplete="name"
+                    />
+                  </div>
+                </Field>
+              )}
+
+              <Field
+                label="Email"
+                required
+                hint={
+                  tab === 'signup' && ALLOWED_EMAIL_DOMAINS.length > 0
+                    ? `Use your ${ALLOWED_EMAIL_DOMAINS[0]} address.`
+                    : undefined
+                }
+              >
                 <div className="relative">
-                  <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
                   <input
                     className="input pl-9"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Dr. Takuya Tanaka"
-                    autoComplete="name"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@e.ntu.edu.sg"
+                    autoComplete="email"
                   />
                 </div>
               </Field>
-            )}
 
-            <Field
-              label="Email"
-              required
-              hint={
-                tab === 'signup' && ALLOWED_EMAIL_DOMAINS.length > 0
-                  ? `Use your ${ALLOWED_EMAIL_DOMAINS[0]} address.`
-                  : undefined
-              }
-            >
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-                <input
-                  className="input pl-9"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@e.ntu.edu.sg"
-                  autoComplete="email"
-                />
-              </div>
-            </Field>
+              <Field
+                label="Password"
+                required
+                hint={tab === 'signup' ? 'At least 8 characters.' : undefined}
+              >
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                  <input
+                    className="input pl-9 pr-10"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete={tab === 'signin' ? 'current-password' : 'new-password'}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-ink-400 hover:text-ink-700 dark:hover:text-ink-200"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </Field>
 
-            <Field
-              label="Password"
-              required
-              hint={tab === 'signup' ? 'At least 8 characters.' : undefined}
-            >
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-                <input
-                  className="input pl-9 pr-10"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete={tab === 'signin' ? 'current-password' : 'new-password'}
-                />
+              {error && <ErrorBanner message={error} />}
+              {notice && <NoticeBanner message={notice} />}
+
+              <button type="submit" className="btn-primary w-full" disabled={busy}>
+                {busy ? <Spinner /> : null}
+                {tab === 'signin' ? 'Sign in' : 'Create account'}
+                {!busy && <ArrowRight className="h-4 w-4" />}
+              </button>
+
+              {tab === 'signin' && MODE === 'cloud' && (
                 <button
                   type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-ink-400 hover:text-ink-700 dark:hover:text-ink-200"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => void onForgotPassword()}
+                  className="w-full text-center text-xs font-medium text-ink-500 hover:text-pearl-700 dark:hover:text-pearl-400"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  Forgot your password?
                 </button>
-              </div>
-            </Field>
-
-            {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <p className="leading-snug">{error}</p>
-              </div>
-            )}
-            {notice && (
-              <div className="rounded-lg border border-pearl-200 bg-pearl-50 p-3 text-sm leading-snug text-pearl-900 dark:border-pearl-500/30 dark:bg-pearl-500/10 dark:text-pearl-100">
-                {notice}
-              </div>
-            )}
-
-            <button type="submit" className="btn-primary w-full" disabled={busy}>
-              {busy ? <Spinner /> : null}
-              {tab === 'signin' ? 'Sign in' : 'Create account'}
-              {!busy && <ArrowRight className="h-4 w-4" />}
-            </button>
-
-            {tab === 'signin' && MODE === 'cloud' && (
-              <button
-                type="button"
-                onClick={() => void onForgotPassword()}
-                className="w-full text-center text-xs font-medium text-ink-500 hover:text-pearl-700 dark:hover:text-pearl-400"
-              >
-                Forgot your password?
-              </button>
-            )}
-          </form>
+              )}
+            </form>
+          )}
 
           {MODE === 'demo' && (
             <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-3.5 dark:border-amber-500/25 dark:bg-amber-500/10">
@@ -265,9 +449,10 @@ export default function LoginPage() {
                 <Beaker className="h-4 w-4" /> Demo mode
               </div>
               <p className="mt-1.5 text-xs leading-relaxed text-amber-800 dark:text-amber-200/80">
-                No server is connected yet, so accounts and data live in this browser only. Sign up
-                with any email to explore the lab’s real 235-container starter inventory — the first
-                account created becomes the admin. See{' '}
+                No server is connected yet, so accounts and data live in this browser only, and
+                email links / Google sign-in need a real mail and OAuth setup to work — that's why
+                you're seeing a password form. Sign up with any email to explore the lab's real
+                235-container starter inventory — the first account created becomes the admin. See{' '}
                 <code className="font-mono">SETUP.md</code> to switch on the shared database.
               </p>
             </div>
@@ -281,6 +466,46 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+      <p className="leading-snug">{message}</p>
+    </div>
+  )
+}
+
+function NoticeBanner({ message }: { message: string }) {
+  return (
+    <div className="rounded-lg border border-pearl-200 bg-pearl-50 p-3 text-sm leading-snug text-pearl-900 dark:border-pearl-500/30 dark:bg-pearl-500/10 dark:text-pearl-100">
+      {message}
+    </div>
+  )
+}
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} aria-hidden>
+      <path
+        fill="#EA4335"
+        d="M24 9.5c3.4 0 6.4 1.2 8.8 3.5l6.5-6.5C35.3 2.6 30 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.6 5.9C12.1 13.1 17.6 9.5 24 9.5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 3-2.2 5.5-4.7 7.2l7.3 5.7c4.2-3.9 6.7-9.7 6.7-17.4z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M10.2 19.1c-.6 1.5-.9 3.2-.9 4.9s.3 3.4.9 4.9l-7.6 5.9C.9 31.6 0 27.9 0 24s.9-7.6 2.6-10.8z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 48c6 0 11.3-2 15.1-5.4l-7.3-5.7c-2 1.4-4.7 2.2-7.8 2.2-6.4 0-11.9-3.6-14.1-8.9l-7.6 5.9C6.5 42.6 14.6 48 24 48z"
+      />
+    </svg>
   )
 }
 

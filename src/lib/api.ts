@@ -25,6 +25,20 @@ function fail(context: string, error: { message: string } | null): never {
   throw new ApiError(`${context}: ${error?.message ?? 'unknown error'}`)
 }
 
+/**
+ * Where Supabase should send the browser back to after a magic link or an
+ * OAuth round trip. Deliberately the bare origin + path, no hash — the app
+ * uses HashRouter for its own routes, and Supabase appends its own token
+ * fragment (or `?code=`) to whatever URL we hand it here. Landing on a clean
+ * URL keeps those from fighting over `location.hash`; the session is picked
+ * up by `detectSessionInUrl` before the router ever looks at it, and this
+ * exact URL must also be added to the Supabase project's redirect allow-list
+ * (see SETUP.md).
+ */
+function redirectUrl(): string {
+  return window.location.origin + window.location.pathname
+}
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
@@ -117,6 +131,43 @@ export const auth = {
     if (error) throw new ApiError(error.message)
     if (!data.session) return { profile: null, needsConfirmation: true }
     return { profile: await auth.currentProfile(), needsConfirmation: false }
+  },
+
+  /**
+   * Passwordless sign-in: Supabase emails a one-time link that both creates the
+   * account (first time) and signs the person in. Nothing to remember, nothing
+   * to reset — usually the right default for a lab.
+   */
+  async sendMagicLink(email: string): Promise<void> {
+    if (!IS_CLOUD) {
+      throw new ApiError(
+        'Magic links need the shared database. In demo mode, sign up with a password instead.',
+      )
+    }
+    const { error } = await requireSupabase().auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: redirectUrl(), shouldCreateUser: true },
+    })
+    if (error) throw new ApiError(error.message)
+  },
+
+  /**
+   * Google OAuth. Returns only after the browser has been handed to Google —
+   * the session is picked up on the way back by `detectSessionInUrl`.
+   */
+  async signInWithGoogle(): Promise<void> {
+    if (!IS_CLOUD) {
+      throw new ApiError('Google sign-in needs the shared database. See SETUP.md.')
+    }
+    const { error } = await requireSupabase().auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectUrl(),
+        // Ask for a refresh token so long sessions survive a closed laptop.
+        queryParams: { access_type: 'offline', prompt: 'consent' },
+      },
+    })
+    if (error) throw new ApiError(error.message)
   },
 
   async signOut(): Promise<void> {

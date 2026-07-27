@@ -92,7 +92,48 @@ confirmation on, the app handles it — it tells people to check their inbox.
 
 ---
 
-## 6. Point the app at it
+## 5b. Add the app's URL to the redirect allow-list
+
+Both magic links and Google sign-in bounce the browser back to the app after
+the click. Supabase only allows that redirect to land on URLs you've approved.
+
+**Authentication → URL Configuration**:
+
+- **Site URL:** the address the app will live at once published — e.g.
+  `https://your-group.github.io/pearl-inventory/`
+- **Redirect URLs:** add that same address, **and** `http://localhost:5173/`
+  (or whatever port `npm run dev` prints) so it also works while developing.
+
+Add every URL the app is ever reachable at — the deployed one and your local
+one both need to be listed, or sign-in will fail with a "redirect not allowed"
+error right after the click.
+
+---
+
+## 6. Add Google sign-in (optional)
+
+Skip this section if email links are enough for the group — magic links work
+out of the box with nothing further to configure. Add Google on top if people
+would rather use their NTU Google account.
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+   create an **OAuth client ID** of type **Web application**.
+   - **Authorized redirect URI:** copy this from Supabase — **Authentication →
+     Providers → Google** shows the exact callback URL to paste in
+     (`https://<project>.supabase.co/auth/v1/callback`).
+2. Copy the **Client ID** and **Client Secret** Google gives you.
+3. Back in Supabase, **Authentication → Providers → Google** → paste both →
+   **Enable** → **Save**.
+
+That's it — the "Continue with Google" button in the app starts working
+immediately, no rebuild needed. If your group is entirely `@e.ntu.edu.sg`, you
+can restrict the Google OAuth consent screen to your Google Workspace domain
+from the same Cloud Console project, which stops anyone outside NTU from even
+seeing the login prompt.
+
+---
+
+## 7. Point the app at it
 
 Copy `.env.example` to `.env` in the project folder and fill it in:
 
@@ -112,12 +153,13 @@ and Settings shows the connected host — that is how you know it worked.
 
 ---
 
-## 7. Create the first account
+## 8. Create the first account
 
-Sign up in the app. **The first account created becomes the admin**, so make it
-yours or the PI's, not a test address. If you do create a test account first,
-you can fix it in Supabase: **Table Editor → profiles →** change `role` to
-`admin` on the right row.
+Sign up in the app — by email link, Google, or password, whichever you set up.
+**The first account created becomes the admin**, so make it yours or the PI's,
+not a test address. If you do create a test account first, you can fix it in
+Supabase: **Table Editor → profiles →** change `role` to `admin` on the right
+row.
 
 From then on, invite the group by simply sending them the link. Everyone who
 signs up becomes a `member` — able to add and edit, but not delete. Promote or
@@ -125,11 +167,15 @@ restrict people from the **Members** page.
 
 ---
 
-## 8. Publish it for the group
+## 9. Publish it for the group
 
 See the *Publishing* section in [README.md](README.md). Short version: push to
 GitHub, set **Pages → Source → GitHub Actions**, and add `VITE_SUPABASE_URL` and
 `VITE_SUPABASE_ANON_KEY` as repository **Variables**.
+
+Once it's live at its real GitHub Pages URL, double check that URL is in the
+redirect allow-list from step 5b — that's the step people forget, and the
+symptom is sign-in working locally but failing the moment it's live.
 
 ---
 
@@ -163,6 +209,9 @@ future version needs new columns, it will come with a migration file in
 | Sign-up succeeds, then "no profile could be loaded" | The trigger from step 2 did not run | Re-run `supabase/schema.sql`. |
 | "new row violates row-level security policy" | Your account is a `viewer` | An admin can promote you on the Members page. |
 | Nobody is an admin | The first sign-up predated the schema | Supabase → Table Editor → `profiles` → set `role` to `admin`. |
+| Magic link / Google redirects to an error page, or "redirect not allowed" | The app's URL isn't on the allow-list | Add it under **Authentication → URL Configuration** (step 5b) — both the deployed URL and your `localhost` one. |
+| Clicking a magic link signs in on a different device than expected | Expected — the link itself carries the session | Open it on the device you actually want signed in; if you checked mail on your phone, forward the link or open it there. |
+| "Continue with Google" does nothing / shows a Google error | Google provider not enabled, or the redirect URI in Google Cloud doesn't match | Re-check step 6 — the callback URL must match exactly, including `https://`. |
 | Published site is blank | Wrong base path | The app uses `HashRouter` and relative asset paths, so this should not happen. If it does, check that the Pages build actually finished in the Actions tab. |
 | Structures and auto-fill do nothing | PubChem unreachable | This is optional enrichment and always fails soft. Everything else keeps working. |
 
