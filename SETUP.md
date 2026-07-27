@@ -76,19 +76,24 @@ confirmation on, the app handles it — it tells people to check their inbox.
 
 ## 5. Get the two keys
 
-**Project Settings → API**, and copy:
+**Project Settings → API Keys**, and copy:
 
 - **Project URL** — looks like `https://abcdefgh.supabase.co`
-- **anon / public** key — a long string starting `eyJ…`
+- The **publishable key** — a shorter string starting `sb_publishable_…`
 
-> **On key safety.** The `anon` key is *designed* to ship inside a browser. It
-> grants nothing on its own; every query is still checked against the Row Level
-> Security policies from step 2. Putting it in the repository or in a public
-> build is expected and fine.
+Supabase renamed its keys in 2025; older projects (or ones you set up a while
+ago) instead show an **anon / public** key, a long string starting `eyJ…` — if
+that's what you see, use that one. Same purpose, just two names for it
+depending on when the project was created.
+
+> **On key safety.** Whichever name it has, this key is *designed* to ship
+> inside a browser. It grants nothing on its own; every query is still checked
+> against the Row Level Security policies from step 2. Putting it in the
+> repository or in a public build is expected and fine.
 >
-> The **`service_role`** key on that same page is the opposite — it bypasses all
-> security. Never put it in `.env`, in the repository, or anywhere near the
-> frontend.
+> The **secret key** (`sb_secret_…`, formerly called `service_role`) on that
+> same page is the opposite — it bypasses all security. Never put it in
+> `.env`, in the repository, or anywhere near the frontend.
 
 ---
 

@@ -9,19 +9,20 @@ export default {
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
       colors: {
-        // PEARL palette — deep teal/aqua, evoking the "pearl" lustre
+        // Brand ramp, keyed to the lab's actual mark: deep navy through to the
+        // blue edge of its rainbow sphere. Not a generic teal SaaS accent.
         pearl: {
-          50: '#eefbfa',
-          100: '#d3f5f2',
-          200: '#abeae7',
-          300: '#73d9d6',
-          400: '#39bfbe',
-          500: '#1ea3a4',
-          600: '#158284',
-          700: '#14686a',
-          800: '#155356',
-          900: '#164648',
-          950: '#06282b',
+          50: '#eef4ff',
+          100: '#dce8ff',
+          200: '#b8d1ff',
+          300: '#8ab3ff',
+          400: '#5b90fa',
+          500: '#3b73f0',
+          600: '#2457d6',
+          700: '#1c44ab',
+          800: '#1a3a89',
+          900: '#182f68',
+          950: '#0b1830',
         },
         ink: {
           50: '#f6f7f9',

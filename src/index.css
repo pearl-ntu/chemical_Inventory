@@ -116,8 +116,8 @@
   --viz-muted: #898781;
   --viz-ink: #333a47;
 
-  --viz-series: #158284; /* brand teal — single-series magnitude bars */
-  --viz-series-soft: #abeae7;
+  --viz-series: #2457d6; /* brand blue — single-series magnitude bars */
+  --viz-series-soft: #b8d1ff;
 
   --viz-good: #0ca30c;
   --viz-warning: #fab219;
@@ -132,8 +132,8 @@
   --viz-muted: #8595ae;
   --viz-ink: #eceef2;
 
-  --viz-series: #39bfbe;
-  --viz-series-soft: #155356;
+  --viz-series: #5b90fa;
+  --viz-series-soft: #1a3a89;
 
   --viz-good: #0ca30c;
   --viz-warning: #fab219;

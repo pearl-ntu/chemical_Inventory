@@ -17,9 +17,9 @@ export const SUPABASE_ANON_KEY = (env.VITE_SUPABASE_ANON_KEY ?? '').trim()
 export const IS_CLOUD = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
 export const MODE: 'cloud' | 'demo' = IS_CLOUD ? 'cloud' : 'demo'
 
-export const LAB_NAME = (env.VITE_LAB_NAME ?? 'PEARL Group').trim()
+export const LAB_NAME = (env.VITE_LAB_NAME ?? 'PEARL').trim()
 export const LAB_SUBTITLE = (
-  env.VITE_LAB_SUBTITLE ?? 'Prof. Xiaogang Liu Lab · NTU Singapore'
+  env.VITE_LAB_SUBTITLE ?? 'Photon Emission & Reactivity Lab · Prof. Xiaogang Liu · NTU Singapore'
 ).trim()
 
 /** Optional sign-up allow-list, e.g. "ntu.edu.sg,e.ntu.edu.sg". Empty = anyone. */

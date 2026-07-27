@@ -11,7 +11,7 @@ import {
   MailCheck,
   User,
 } from 'lucide-react'
-import { Logo } from '../components/Logo'
+import { Logo, NtuBadge } from '../components/Logo'
 import { Field, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -142,65 +142,76 @@ export default function LoginPage() {
   return (
     <div className="grid min-h-full lg:grid-cols-2">
       {/* ---------------------------------------------------------------- brand */}
-      <div className="relative hidden overflow-hidden bg-pearl-950 lg:flex lg:flex-col lg:justify-between lg:p-12">
-        <MolecularBackdrop />
+      <div className="relative hidden overflow-hidden bg-[#0b1830] lg:flex lg:flex-col lg:justify-between lg:p-12">
+        {/* The mark itself, oversized and bled off the corner — the one
+            deliberate flourish, everything else on this panel stays quiet. */}
+        <Logo className="pointer-events-none absolute -right-20 -top-32 h-[26rem] w-[26rem] opacity-90" />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(120% 90% at 15% 100%, rgba(11,24,48,0) 0%, #0b1830 65%)',
+          }}
+        />
 
-        <div className="relative">
-          <div className="flex items-center gap-3">
-            <Logo className="h-10 w-10" />
-            <div>
-              <div className="text-lg font-extrabold tracking-tight text-white">
-                PEARL <span className="font-medium text-pearl-300">Inventory</span>
-              </div>
-              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-pearl-400/80">
-                Nanyang Technological University
-              </div>
+        <div className="relative flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-sm font-black tracking-tight text-white">
+            P
+          </span>
+          <div>
+            <div className="text-lg font-extrabold tracking-tight text-white">PEARL</div>
+            <div className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-white/50">
+              Inventory
             </div>
           </div>
         </div>
 
-        <div className="relative max-w-lg">
-          <h1 className="text-3xl font-bold leading-tight tracking-tight text-white xl:text-4xl">
-            Every reagent, every shelf,
-            <br />
-            <span className="text-pearl-300">one source of truth.</span>
+        <div className="relative max-w-md">
+          <h1 className="text-[2rem] font-bold leading-[1.15] tracking-tight text-white">
+            Every reagent, every shelf, one source of truth.
           </h1>
-          <p className="mt-4 text-[15px] leading-relaxed text-pearl-100/70">
+          <p className="mt-4 text-[15px] leading-relaxed text-white/60">
             Search the whole store in a keystroke, see what is running low before an experiment
             stalls, and know exactly which fridge a bottle is sitting in — from the bench, on a
             phone, without opening a spreadsheet.
           </p>
 
-          <dl className="mt-9 grid grid-cols-3 gap-6 border-t border-white/10 pt-6">
+          <dl className="mt-10 flex gap-8 border-t border-white/10 pt-6">
             {[
-              ['235', 'containers tracked'],
-              ['16', 'storage locations'],
+              ['235', 'containers'],
+              ['16', 'locations'],
               ['40', 'suppliers'],
             ].map(([n, l]) => (
               <div key={l}>
-                <dt className="text-2xl font-bold text-white">{n}</dt>
-                <dd className="mt-0.5 text-xs leading-snug text-pearl-300/70">{l}</dd>
+                <dt className="text-xl font-bold text-white">{n}</dt>
+                <dd className="mt-0.5 text-xs text-white/45">{l}</dd>
               </div>
             ))}
           </dl>
         </div>
 
-        <p className="relative text-xs text-pearl-400/60">{LAB_SUBTITLE}</p>
+        <div className="relative flex items-center justify-between">
+          <p className="text-xs leading-snug text-white/45">{LAB_SUBTITLE}</p>
+          <NtuBadge className="opacity-80 [&_span:last-child]:text-white/60" />
+        </div>
       </div>
 
       {/* ----------------------------------------------------------------- form */}
       <div className="flex items-center justify-center px-5 py-10 sm:px-10">
         <div className="w-full max-w-sm">
-          <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <Logo className="h-9 w-9" />
-            <div>
-              <div className="text-base font-extrabold tracking-tight text-ink-900 dark:text-ink-50">
-                PEARL <span className="font-medium text-pearl-600 dark:text-pearl-400">Inventory</span>
-              </div>
-              <div className="text-[10px] font-medium uppercase tracking-widest text-ink-400">
-                NTU Singapore
+          <div className="mb-8 flex items-center justify-between gap-3 lg:hidden">
+            <div className="flex items-center gap-3">
+              <Logo className="h-9 w-9" />
+              <div>
+                <div className="text-base font-extrabold tracking-tight text-ink-900 dark:text-ink-50">
+                  PEARL <span className="font-medium text-pearl-600 dark:text-pearl-400">Inventory</span>
+                </div>
+                <div className="text-[10px] font-medium text-ink-400">
+                  Photon Emission &amp; Reactivity Lab
+                </div>
               </div>
             </div>
+            <NtuBadge />
           </div>
 
           <h2 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">
@@ -459,7 +470,7 @@ export default function LoginPage() {
           )}
 
           <p className="mt-8 text-center text-xs leading-relaxed text-ink-400">
-            Built for the PEARL Group · Prof. Xiaogang Liu Lab
+            Photon Emission &amp; Reactivity Lab · Prof. Xiaogang Liu
             <br />
             Nanyang Technological University, Singapore
           </p>
@@ -509,44 +520,3 @@ function GoogleIcon({ className }: { className?: string }) {
   )
 }
 
-/** Decorative hex-lattice + orbiting rings. Purely presentational. */
-function MolecularBackdrop() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-      <svg className="absolute inset-0 h-full w-full opacity-[0.16]" preserveAspectRatio="xMidYMid slice">
-        <defs>
-          <pattern id="hex" width="56" height="97" patternUnits="userSpaceOnUse" patternTransform="scale(1.1)">
-            <path
-              d="M28 0 L56 16 L56 48 L28 64 L0 48 L0 16 Z"
-              fill="none"
-              stroke="#73d9d6"
-              strokeWidth="1"
-            />
-            <path
-              d="M28 64 L56 80 L56 97 M28 64 L0 80 L0 97"
-              fill="none"
-              stroke="#73d9d6"
-              strokeWidth="1"
-            />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#hex)" />
-      </svg>
-
-      <div className="absolute -right-32 -top-32 h-[28rem] w-[28rem] rounded-full bg-pearl-500/20 blur-3xl" />
-      <div className="absolute -bottom-40 -left-24 h-[26rem] w-[26rem] rounded-full bg-pearl-400/10 blur-3xl" />
-
-      <svg className="absolute right-8 top-1/3 h-64 w-64 opacity-30" viewBox="0 0 200 200">
-        <g fill="none" stroke="#abeae7" strokeWidth="1.2">
-          <ellipse cx="100" cy="100" rx="80" ry="30" />
-          <ellipse cx="100" cy="100" rx="80" ry="30" transform="rotate(60 100 100)" />
-          <ellipse cx="100" cy="100" rx="80" ry="30" transform="rotate(120 100 100)" />
-        </g>
-        <circle cx="100" cy="100" r="7" fill="#39bfbe" />
-        <circle cx="180" cy="100" r="4" fill="#abeae7" />
-        <circle cx="60" cy="31" r="4" fill="#abeae7" />
-        <circle cx="60" cy="169" r="4" fill="#abeae7" />
-      </svg>
-    </div>
-  )
-}

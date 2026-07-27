@@ -241,8 +241,16 @@ create policy "signed-in users append activity"
 
 -- ---------------------------------------------------------------------------
 -- Convenience view: current stock grouped by location, for the dashboard.
+--
+-- `security_invoker = true` is required here: without it, Postgres runs the
+-- view's query as its *owner* (a superuser role in Supabase), which checks
+-- the view owner's permissions instead of the querying user's — silently
+-- bypassing the RLS policies on `chemicals` for anyone who can query this
+-- view. With it set, the view enforces exactly the policies above, the way a
+-- reasonable person would expect a "view" to behave.
 -- ---------------------------------------------------------------------------
-create or replace view public.location_summary as
+create or replace view public.location_summary
+  with (security_invoker = true) as
   select
     coalesce(location, 'Unassigned') as location,
     count(*)                          as containers,

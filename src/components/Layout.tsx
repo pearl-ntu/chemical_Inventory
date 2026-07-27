@@ -19,7 +19,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { MODE, LAB_SUBTITLE } from '../lib/config'
 import { cx } from '../lib/utils'
-import { Wordmark } from './Logo'
+import { NtuBadge, Wordmark } from './Logo'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -173,7 +173,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         >
           <Settings className="h-4 w-4" /> Settings
         </NavLink>
-        <p className="px-3 pt-2 text-[11px] leading-snug text-ink-400">{LAB_SUBTITLE}</p>
+        <div className="flex items-center justify-between gap-2 px-3 pt-2.5">
+          <p className="text-[10.5px] leading-snug text-ink-400">{LAB_SUBTITLE}</p>
+          <NtuBadge className="shrink-0 [&_span:last-child]:hidden" />
+        </div>
       </div>
     </>
   )
