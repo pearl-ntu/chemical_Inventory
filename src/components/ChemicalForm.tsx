@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Sparkles, TriangleAlert } from 'lucide-react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import { PenTool, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
 import { hazardHint } from '../lib/hazardHints'
@@ -7,6 +7,7 @@ import * as pubchem from '../lib/pubchem'
 import { HAZARDS, SIZE_UNITS, STATUSES, STATUS_LABEL, type Chemical, type ChemicalInput } from '../lib/types'
 import { cx, todayISO, uniqueSorted, validateCAS } from '../lib/utils'
 import { Field, Modal, Spinner } from './ui'
+import { LazyMolfileSvgRenderer, LazyStructureEditorDialog } from './LazyStructure'
 import { useAuth } from '../context/AuthContext'
 
 function blank(defaults: Partial<ChemicalInput>, registeredBy: string): ChemicalInput {
@@ -20,6 +21,7 @@ function blank(defaults: Partial<ChemicalInput>, registeredBy: string): Chemical
     sub_location: null,
     formula: null,
     mol_weight: null,
+    structure_molfile: null,
     purity: null,
     quantity: 1,
     size_value: null,
@@ -59,6 +61,7 @@ export function ChemicalForm({
   const [busy, setBusy] = useState(false)
   const [looking, setLooking] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [drawOpen, setDrawOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -195,7 +198,7 @@ export function ChemicalForm({
             />
           </Field>
 
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
             <Field
               label="CAS number"
               error={errors.cas}
@@ -220,7 +223,40 @@ export function ChemicalForm({
                 Auto-fill
               </button>
             </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                className="btn-secondary w-full sm:w-auto"
+                onClick={() => setDrawOpen(true)}
+                title="Draw the 2D structure by hand"
+              >
+                <PenTool className="h-4 w-4" />
+                {form.structure_molfile ? 'Edit structure' : 'Draw structure'}
+              </button>
+            </div>
           </div>
+
+          {form.structure_molfile && (
+            <div className="flex items-center gap-3 rounded-lg border border-ink-200 bg-white p-2 dark:border-ink-700 dark:bg-ink-950">
+              <div className="viz-root flex h-20 w-28 shrink-0 items-center justify-center overflow-hidden rounded bg-white">
+                <Suspense fallback={<Spinner className="h-4 w-4 text-ink-300" />}>
+                  <LazyMolfileSvgRenderer molfile={form.structure_molfile} width={110} height={75} />
+                </Suspense>
+              </div>
+              <p className="flex-1 text-xs text-ink-500">
+                Hand-drawn structure attached. Formula and molar mass were filled in from it — edit
+                either field afterward if you need to.
+              </p>
+              <button
+                type="button"
+                className="btn-ghost p-1.5 text-ink-400 hover:text-rose-600"
+                onClick={() => set('structure_molfile', null)}
+                title="Remove the drawn structure"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
 
           {duplicate && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
@@ -529,6 +565,35 @@ export function ChemicalForm({
           </Field>
         </section>
       </div>
+
+      {drawOpen && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 backdrop-blur-sm">
+              <div className="flex items-center gap-3 rounded-xl bg-white px-5 py-4 shadow-pop dark:bg-ink-900">
+                <Spinner className="h-5 w-5 text-pearl-600" />
+                <span className="text-sm text-ink-600 dark:text-ink-300">Loading the structure editor…</span>
+              </div>
+            </div>
+          }
+        >
+          <LazyStructureEditorDialog
+            open={drawOpen}
+            onClose={() => setDrawOpen(false)}
+            initialMolfile={form.structure_molfile}
+            onConfirm={(structure) => {
+              setForm((f) => ({
+                ...f,
+                structure_molfile: structure.molfile,
+                formula: structure.formula,
+                mol_weight: structure.molWeight,
+              }))
+              setDrawOpen(false)
+              toast.success('Structure attached — formula and molar mass filled in from it.')
+            }}
+          />
+        </Suspense>
+      )}
     </Modal>
   )
 }

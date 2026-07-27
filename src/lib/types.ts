@@ -39,6 +39,8 @@ export interface Chemical {
   sub_location: string | null
   formula: string | null
   mol_weight: number | null
+  /** MDL Molfile (V3000) from the built-in 2D structure editor — null if never drawn. */
+  structure_molfile: string | null
   purity: string | null
   quantity: number
   size_value: number | null

@@ -283,6 +283,7 @@ export function rowsToChemicals(table: string[][]): ImportResult {
       sub_location: raw.sub_location || null,
       formula: raw.formula || null,
       mol_weight: raw.mol_weight ? toNumber(raw.mol_weight) : null,
+      structure_molfile: null,
       purity: raw.purity || null,
       quantity: raw.quantity ? (toNumber(raw.quantity) ?? 1) : 1,
       size_value: raw.size_value ? toNumber(raw.size_value) : null,

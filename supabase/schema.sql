@@ -85,6 +85,11 @@ create table if not exists public.chemicals (
   updated_at        timestamptz not null default now()
 );
 
+-- The MDL Molfile from the built-in 2D structure editor. Nullable — plenty of
+-- entries will only ever have a PubChem-looked-up depiction, not a hand-drawn
+-- one, and that's fine.
+alter table public.chemicals add column if not exists structure_molfile text;
+
 create index if not exists chemicals_name_idx       on public.chemicals (lower(name));
 create index if not exists chemicals_cas_idx        on public.chemicals (cas);
 create index if not exists chemicals_location_idx   on public.chemicals (location);

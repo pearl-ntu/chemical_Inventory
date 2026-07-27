@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import {
   Building2,
   CalendarDays,
@@ -20,6 +20,7 @@ import { qrDataUrl } from '../lib/qr'
 import { STATUS_LABEL, type Chemical } from '../lib/types'
 import { cx, formatDate, formatSize, statusTone } from '../lib/utils'
 import { HazardBadges } from './HazardBadges'
+import { LazyMolfileSvgRenderer } from './LazyStructure'
 import { ConfirmDialog, Drawer, Spinner } from './ui'
 
 function Row({
@@ -156,8 +157,12 @@ export function ChemicalDrawer({
 
           {/* structure + qr ---------------------------------------------- */}
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="card flex min-h-[160px] items-center justify-center overflow-hidden p-3">
-              {info ? (
+            <div className="viz-root card flex min-h-[160px] items-center justify-center overflow-hidden bg-white p-3">
+              {c.structure_molfile ? (
+                <Suspense fallback={<Spinner className="h-5 w-5 text-ink-300" />}>
+                  <LazyMolfileSvgRenderer molfile={c.structure_molfile} width={220} height={150} />
+                </Suspense>
+              ) : info ? (
                 <img
                   src={info.imageUrl}
                   alt={`Structure of ${c.name}`}
@@ -166,8 +171,8 @@ export function ChemicalDrawer({
                 />
               ) : (
                 <p className="px-3 text-center text-xs text-ink-400">
-                  No structure available offline. Structures come from PubChem when the network
-                  allows.
+                  No structure available offline. Draw one from the edit form, or it's looked up
+                  from PubChem when the network allows.
                 </p>
               )}
             </div>
