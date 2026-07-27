@@ -45,9 +45,7 @@ import {
 const PAGE_SIZE = 25
 
 export default function InventoryPage() {
-  // The shared table is the vetted shelf only — pending/rejected submissions
-  // live in the Approvals queue and on the submitter's own dashboard instead.
-  const { approvedChemicals: chemicals, loading, error, markEmpty } = useInventory()
+  const { chemicals, loading, error, markEmpty } = useInventory()
   const { canEdit } = useAuth()
   const toast = useToast()
   const [params, setParams] = useSearchParams()

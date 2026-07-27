@@ -14,8 +14,7 @@ import { formatSize, matchesQuery, uniqueSorted } from '../lib/utils'
  * prints fine on plain paper cut by hand.
  */
 export default function LabelsPage() {
-  // No point printing a sticker for something that isn't confirmed inventory yet.
-  const { approvedChemicals: chemicals, loading } = useInventory()
+  const { chemicals, loading } = useInventory()
 
   const [q, setQ] = useState('')
   const [locations, setLocations] = useState<string[]>([])

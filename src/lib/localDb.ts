@@ -86,12 +86,6 @@ function seedChemicals(): Chemical[] {
     created_by: null,
     created_at: now,
     updated_at: now,
-    // The starter sheet is the lab's existing, already-vetted inventory —
-    // not a fresh submission — so it loads straight in as approved.
-    review_status: 'approved',
-    reviewed_by: null,
-    reviewed_at: null,
-    rejection_reason: null,
   }))
 }
 

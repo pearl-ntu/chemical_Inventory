@@ -5,7 +5,6 @@ import {
   Boxes,
   CalendarClock,
   CircleSlash,
-  ClipboardCheck,
   Copy,
   Database,
   MapPin,
@@ -17,7 +16,6 @@ import { ChemicalDrawer } from '../components/ChemicalDrawer'
 import { ChemicalForm } from '../components/ChemicalForm'
 import { BarList, Donut, StatTile, Timeline } from '../components/charts'
 import { PageHeader } from '../components/Layout'
-import { ReviewBadge } from '../components/ReviewBadge'
 import { EmptyState, LoadingScreen, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
@@ -27,8 +25,8 @@ import type { ActivityEntry, Chemical } from '../lib/types'
 import { cx, formatRelative, formatSize, normalisedAmount } from '../lib/utils'
 
 export default function DashboardPage() {
-  const { chemicals, approvedChemicals, pendingChemicals, loading, loadStarterData } = useInventory()
-  const { profile, canEdit, isAdmin } = useAuth()
+  const { chemicals, loading, loadStarterData } = useInventory()
+  const { profile, canEdit } = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
 
@@ -41,23 +39,13 @@ export default function DashboardPage() {
     void api.listActivity(8).then(setRecent).catch(() => setRecent([]))
   }, [chemicals.length])
 
-  // What's mine, still awaiting a decision — every non-admin cares about this,
-  // an admin sees the same rows (and more) in the Approvals queue instead.
-  const mySubmissions = useMemo(
-    () =>
-      chemicals
-        .filter((c) => c.created_by === profile?.id && c.review_status !== 'approved')
-        .sort((a, b) => b.created_at.localeCompare(a.created_at)),
-    [chemicals, profile],
-  )
-
   const stats = useMemo(() => {
-    const active = approvedChemicals.filter((c) => c.status === 'active')
-    const low = approvedChemicals.filter((c) => c.status === 'low')
-    const empty = approvedChemicals.filter((c) => c.status === 'empty' || c.status === 'disposed')
+    const active = chemicals.filter((c) => c.status === 'active')
+    const low = chemicals.filter((c) => c.status === 'low')
+    const empty = chemicals.filter((c) => c.status === 'empty' || c.status === 'disposed')
 
     const byLocation = new Map<string, number>()
-    for (const c of approvedChemicals) {
+    for (const c of chemicals) {
       if (c.status === 'empty' || c.status === 'disposed') continue
       const key = c.location ?? 'Unassigned'
       byLocation.set(key, (byLocation.get(key) ?? 0) + 1)
@@ -65,7 +53,7 @@ export default function DashboardPage() {
 
     // Registrations per month, oldest first.
     const byMonth = new Map<string, number>()
-    for (const c of approvedChemicals) {
+    for (const c of chemicals) {
       if (!c.registration_date) continue
       const key = c.registration_date.slice(0, 7)
       byMonth.set(key, (byMonth.get(key) ?? 0) + 1)
@@ -118,15 +106,15 @@ export default function DashboardPage() {
       timeline,
       duplicates,
       expiring,
-      suppliers: new Set(approvedChemicals.map((c) => c.supplier).filter(Boolean)).size,
+      suppliers: new Set(chemicals.map((c) => c.supplier).filter(Boolean)).size,
     }
-  }, [approvedChemicals])
+  }, [chemicals])
 
   if (loading) return <LoadingScreen label="Building your dashboard…" />
 
   const firstName = profile?.full_name.split(' ')[0] ?? 'there'
 
-  if (approvedChemicals.length === 0) {
+  if (chemicals.length === 0) {
     return (
       <>
         <PageHeader title={`Welcome, ${firstName}`} description="The inventory is empty — let's fix that." />
@@ -134,14 +122,10 @@ export default function DashboardPage() {
           <EmptyState
             icon={<Database className="h-6 w-6" />}
             title="Load the lab's starter inventory"
-            description={
-              isAdmin
-                ? "The 235 containers from the group's July 2026 spreadsheet are bundled with the app. Load them in one click, then edit from there — or start from scratch and add bottles as you go."
-                : 'Nothing has been approved into the shared shelf yet. An admin can load the group’s starter data, or you can register a container yourself — it’ll wait for admin approval before everyone else sees it.'
-            }
+            description="The 235 containers from the group's July 2026 spreadsheet are bundled with the app. Load them in one click, then edit from there — or start from scratch and add bottles as you go."
             action={
-              <div className="mt-2 flex flex-wrap justify-center gap-2">
-                {isAdmin && (
+              canEdit ? (
+                <div className="mt-2 flex flex-wrap justify-center gap-2">
                   <button
                     className="btn-primary"
                     disabled={seeding}
@@ -160,22 +144,14 @@ export default function DashboardPage() {
                     {seeding ? <Spinner /> : <Database className="h-4 w-4" />}
                     Load 235 starter containers
                   </button>
-                )}
-                {canEdit && (
                   <button className="btn-secondary" onClick={() => setFormOpen(true)}>
                     <Plus className="h-4 w-4" /> Add one manually
                   </button>
-                )}
-              </div>
+                </div>
+              ) : undefined
             }
           />
         </div>
-        {mySubmissions.length > 0 && (
-          <div className="card mt-4 p-4">
-            <SubmissionsList items={mySubmissions} onOpen={setDetail} />
-          </div>
-        )}
-        <ChemicalDrawer chemical={detail} onClose={() => setDetail(null)} onEdit={() => setDetail(null)} />
         <ChemicalForm open={formOpen} onClose={() => setFormOpen(false)} />
       </>
     )
@@ -211,23 +187,12 @@ export default function DashboardPage() {
           icon={<TriangleAlert className="h-5 w-5" />}
           onClick={() => navigate('/inventory')}
         />
-        {isAdmin ? (
-          <StatTile
-            label="Awaiting approval"
-            value={pendingChemicals.length}
-            sub={pendingChemicals.length ? 'submissions to review' : 'queue is clear'}
-            tone={pendingChemicals.length ? 'warning' : 'good'}
-            icon={<ClipboardCheck className="h-5 w-5" />}
-            onClick={() => navigate('/approvals')}
-          />
-        ) : (
-          <StatTile
-            label="Finished"
-            value={stats.empty.length}
-            sub="kept for purchase history"
-            icon={<CircleSlash className="h-5 w-5" />}
-          />
-        )}
+        <StatTile
+          label="Finished"
+          value={stats.empty.length}
+          sub="kept for purchase history"
+          icon={<CircleSlash className="h-5 w-5" />}
+        />
         <StatTile
           label="Suppliers"
           value={stats.suppliers}
@@ -237,31 +202,25 @@ export default function DashboardPage() {
         />
       </div>
 
-      {mySubmissions.length > 0 && (
-        <div className="card mt-4 p-4">
-          <SubmissionsList items={mySubmissions} onOpen={setDetail} />
-        </div>
-      )}
-
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <section className="card p-4 lg:col-span-1">
           <h2 className="mb-4 text-sm font-semibold text-ink-800 dark:text-ink-100">
             Stock by status
           </h2>
           <Donut
-            centerValue={approvedChemicals.length}
+            centerValue={chemicals.length}
             centerLabel="containers"
             data={[
               { label: 'In stock', value: stats.active.length, color: 'var(--viz-good)' },
               { label: 'Running low', value: stats.low.length, color: 'var(--viz-warning)' },
               {
                 label: 'Empty',
-                value: approvedChemicals.filter((c) => c.status === 'empty').length,
+                value: chemicals.filter((c) => c.status === 'empty').length,
                 color: 'var(--viz-neutral)',
               },
               {
                 label: 'Disposed',
-                value: approvedChemicals.filter((c) => c.status === 'disposed').length,
+                value: chemicals.filter((c) => c.status === 'disposed').length,
                 color: 'var(--viz-critical)',
               },
             ]}
@@ -381,11 +340,7 @@ export default function DashboardPage() {
                   <span
                     className={cx(
                       'mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full',
-                      a.action === 'deleted' || a.action === 'rejected'
-                        ? 'bg-rose-500'
-                        : a.action === 'submitted'
-                          ? 'bg-amber-500'
-                          : 'bg-pearl-500',
+                      a.action === 'deleted' ? 'bg-rose-500' : 'bg-pearl-500',
                     )}
                   />
                   <div className="min-w-0">
@@ -458,37 +413,6 @@ export default function DashboardPage() {
         }}
       />
       <ChemicalForm open={formOpen} onClose={() => setFormOpen(false)} />
-    </>
-  )
-}
-
-function SubmissionsList({ items, onOpen }: { items: Chemical[]; onOpen: (c: Chemical) => void }) {
-  return (
-    <>
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-800 dark:text-ink-100">
-        <ClipboardCheck className="h-4 w-4 text-pearl-600" />
-        Your submissions
-      </h2>
-      <ul className="space-y-1.5">
-        {items.map((c) => (
-          <li key={c.id}>
-            <button
-              onClick={() => onOpen(c)}
-              className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-ink-50 dark:hover:bg-ink-800"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-ink-800 dark:text-ink-100">{c.name}</span>
-                {c.review_status === 'rejected' && c.rejection_reason && (
-                  <span className="block truncate text-xs text-rose-600 dark:text-rose-400">
-                    {c.rejection_reason}
-                  </span>
-                )}
-              </span>
-              <ReviewBadge status={c.review_status} />
-            </button>
-          </li>
-        ))}
-      </ul>
     </>
   )
 }

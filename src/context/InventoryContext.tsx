@@ -14,17 +14,7 @@ import { useAuth } from './AuthContext'
 import { useToast } from './ToastContext'
 
 interface InventoryState {
-  /**
-   * Everything this account can see: the whole approved shelf, plus any
-   * pending/rejected rows they're allowed to (their own, or all of them if
-   * they're an admin). Most pages should use `approvedChemicals` instead —
-   * this raw list exists for the approvals queue and "my submissions" views.
-   */
   chemicals: Chemical[]
-  /** The vetted, shared shelf — what every ordinary page should read from. */
-  approvedChemicals: Chemical[]
-  /** Awaiting admin review: all of them if admin, just this user's own otherwise. */
-  pendingChemicals: Chemical[]
   loading: boolean
   error: string | null
   reload: () => Promise<void>
@@ -33,8 +23,6 @@ interface InventoryState {
   remove: (row: Chemical) => Promise<void>
   markEmpty: (row: Chemical) => Promise<void>
   restock: (row: Chemical, quantity: number) => Promise<void>
-  approve: (row: Chemical) => Promise<void>
-  reject: (row: Chemical, reason: string) => Promise<void>
   importRows: (rows: ChemicalInput[]) => Promise<number>
   loadStarterData: () => Promise<number>
 }
@@ -78,20 +66,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return profile
   }, [profile])
 
-  const approvedChemicals = useMemo(
-    () => chemicals.filter((c) => c.review_status === 'approved'),
-    [chemicals],
-  )
-  const pendingChemicals = useMemo(
-    () => chemicals.filter((c) => c.review_status === 'pending'),
-    [chemicals],
-  )
-
   const value = useMemo<InventoryState>(
     () => ({
       chemicals,
-      approvedChemicals,
-      pendingChemicals,
       loading,
       error,
       reload,
@@ -136,18 +113,6 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         setChemicals((prev) => prev.map((c) => (c.id === row.id ? updated : c)))
       },
 
-      async approve(row) {
-        const updated = await api.approveChemical(row, requireProfile())
-        setChemicals((prev) => prev.map((c) => (c.id === row.id ? updated : c)))
-        toast.success(`${row.name} approved — it's now on the shared shelf.`)
-      },
-
-      async reject(row, reason) {
-        const updated = await api.rejectChemical(row, requireProfile(), reason)
-        setChemicals((prev) => prev.map((c) => (c.id === row.id ? updated : c)))
-        toast.info(`${row.name} rejected.`)
-      },
-
       async importRows(rows) {
         const n = await api.importChemicals(rows, requireProfile())
         await reload()
@@ -160,7 +125,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         return n
       },
     }),
-    [chemicals, approvedChemicals, pendingChemicals, loading, error, reload, requireProfile, toast],
+    [chemicals, loading, error, reload, requireProfile, toast],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
