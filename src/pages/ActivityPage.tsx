@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import {
   Activity as ActivityIcon,
+  Check,
+  ClipboardCheck,
   FilePlus2,
   FileX2,
   PackagePlus,
   Pencil,
   Upload,
   UserPlus,
+  X,
 } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen } from '../components/ui'
@@ -16,6 +19,9 @@ import { formatRelative } from '../lib/utils'
 
 const ICON: Record<ActivityAction, typeof Pencil> = {
   created: FilePlus2,
+  submitted: ClipboardCheck,
+  approved: Check,
+  rejected: X,
   updated: Pencil,
   deleted: FileX2,
   marked_empty: FileX2,

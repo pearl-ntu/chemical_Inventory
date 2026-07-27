@@ -15,6 +15,7 @@ import type {
   Chemical,
   ChemicalInput,
   Profile,
+  ReviewStatus,
   Role,
 } from './types'
 import { nextCode } from './utils'
@@ -216,16 +217,27 @@ export const api = {
     return (data ?? []) as Chemical[]
   },
 
+  /**
+   * Admins are already trusted, so their submissions land straight in the
+   * shared inventory. Anyone else's goes into the approval queue instead —
+   * enforced again server-side (see the triggers in supabase/schema.sql) so
+   * this is a UX nicety, not the actual security boundary.
+   */
   async createChemical(input: ChemicalInput, actor: Profile): Promise<Chemical> {
+    const reviewStatus: ReviewStatus = actor.role === 'admin' ? 'approved' : 'pending'
     const payload = {
       ...input,
       registered_by: input.registered_by || actor.full_name,
       created_by: actor.id,
+      review_status: reviewStatus,
+      reviewed_by: null,
+      reviewed_at: null,
+      rejection_reason: null,
     }
 
     if (!IS_CLOUD) {
       const row = localDb.insertChemical(payload as Parameters<typeof localDb.insertChemical>[0])
-      logLocal(row, 'created', `Registered ${row.name}`, actor)
+      logSubmission(row, actor)
       return row
     }
 
@@ -244,19 +256,46 @@ export const api = {
     if (error) fail('Could not add the chemical', error)
 
     const row = data as Chemical
-    await api.log(row, 'created', `Registered ${row.name}`, actor)
+    await api.log(
+      row,
+      row.review_status === 'approved' ? 'created' : 'submitted',
+      row.review_status === 'approved'
+        ? `Registered ${row.name}`
+        : `Submitted ${row.name} for approval`,
+      actor,
+    )
     return row
   },
 
+  /**
+   * `logAction: null` skips the automatic "updated" activity entry — used by
+   * approve/reject below, which write their own more specific entry instead
+   * of a generic duplicate.
+   */
   async updateChemical(
     id: string,
     patch: Partial<Chemical>,
     actor: Profile,
     note?: string,
+    logAction: ActivityAction | null = 'updated',
   ): Promise<Chemical> {
     if (!IS_CLOUD) {
-      const row = localDb.updateChemical(id, patch)
-      logLocal(row, 'updated', note ?? `Updated ${row.name}`, actor)
+      const existing = localDb.chemicals().find((r) => r.id === id)
+      // Mirrors the cloud trigger: the submitter editing their own
+      // not-yet-approved entry is a resubmission, not a silent self-approval.
+      const resubmit =
+        existing &&
+        actor.role !== 'admin' &&
+        existing.review_status !== 'approved' &&
+        existing.created_by === actor.id &&
+        patch.review_status === undefined
+      const row = localDb.updateChemical(
+        id,
+        resubmit
+          ? { ...patch, review_status: 'pending', reviewed_by: null, reviewed_at: null, rejection_reason: null }
+          : patch,
+      )
+      if (logAction) logLocal(row, logAction, note ?? `Updated ${row.name}`, actor)
       return row
     }
     const { data, error } = await requireSupabase()
@@ -267,8 +306,61 @@ export const api = {
       .single()
     if (error) fail('Could not save the changes', error)
     const row = data as Chemical
-    await api.log(row, 'updated', note ?? `Updated ${row.name}`, actor)
+    if (logAction) await api.log(row, logAction, note ?? `Updated ${row.name}`, actor)
     return row
+  },
+
+  /** All pending submissions an admin can see; just this user's own, otherwise. */
+  async listPending(actor: Profile): Promise<Chemical[]> {
+    if (!IS_CLOUD) {
+      return localDb
+        .chemicals()
+        .filter((c) => c.review_status === 'pending')
+        .filter((c) => actor.role === 'admin' || c.created_by === actor.id)
+    }
+    const { data, error } = await requireSupabase()
+      .from('chemicals')
+      .select('*')
+      .eq('review_status', 'pending')
+      .order('created_at', { ascending: true })
+    if (error) fail('Could not load pending submissions', error)
+    return (data ?? []) as Chemical[]
+  },
+
+  async approveChemical(row: Chemical, actor: Profile): Promise<Chemical> {
+    if (actor.role !== 'admin') throw new ApiError('Only an admin can approve a submission.')
+    const updated = await api.updateChemical(
+      row.id,
+      {
+        review_status: 'approved',
+        reviewed_by: actor.id,
+        reviewed_at: new Date().toISOString(),
+        rejection_reason: null,
+      },
+      actor,
+      undefined,
+      null,
+    )
+    await api.log(updated, 'approved', `${row.name} approved`, actor)
+    return updated
+  },
+
+  async rejectChemical(row: Chemical, actor: Profile, reason: string): Promise<Chemical> {
+    if (actor.role !== 'admin') throw new ApiError('Only an admin can reject a submission.')
+    const updated = await api.updateChemical(
+      row.id,
+      {
+        review_status: 'rejected',
+        reviewed_by: actor.id,
+        reviewed_at: new Date().toISOString(),
+        rejection_reason: reason,
+      },
+      actor,
+      undefined,
+      null,
+    )
+    await api.log(updated, 'rejected', `${row.name} rejected: ${reason}`, actor)
+    return updated
   },
 
   async deleteChemical(row: Chemical, actor: Profile): Promise<void> {
@@ -282,9 +374,16 @@ export const api = {
     await api.log(null, 'deleted', `Deleted ${row.name} (${row.code})`, actor)
   },
 
-  /** Bulk insert used by the CSV importer. Returns how many rows landed. */
+  /**
+   * Bulk insert used by the CSV importer. Returns how many rows landed.
+   * Same rule as a single registration: an admin's import lands live, a
+   * member's import goes to the approval queue row-by-row (enforced
+   * server-side, same as everywhere else).
+   */
   async importChemicals(rows: ChemicalInput[], actor: Profile): Promise<number> {
     if (rows.length === 0) return 0
+    const reviewStatus: ReviewStatus = actor.role === 'admin' ? 'approved' : 'pending'
+    const suffix = reviewStatus === 'pending' ? ' (awaiting approval)' : ''
 
     if (!IS_CLOUD) {
       const existing = localDb.chemicals().map((r) => r.code)
@@ -294,10 +393,14 @@ export const api = {
           code: r.code || nextCode([...existing, ...Array.from({ length: i }, (_, k) => `PEARL-${k}`)]),
           registered_by: r.registered_by || actor.full_name,
           created_by: actor.id,
+          review_status: reviewStatus,
+          reviewed_by: null,
+          reviewed_at: null,
+          rejection_reason: null,
         } as Parameters<typeof localDb.insertChemical>[0])
         existing.push(r.code ?? '')
       })
-      logLocal(null, 'imported', `Imported ${rows.length} containers`, actor)
+      logLocal(null, 'imported', `Imported ${rows.length} containers${suffix}`, actor)
       return rows.length
     }
 
@@ -308,16 +411,30 @@ export const api = {
     const payload = rows.map((r) => {
       const code = r.code || nextCode(taken)
       taken.push(code)
-      return { ...r, code, registered_by: r.registered_by || actor.full_name, created_by: actor.id }
+      return {
+        ...r,
+        code,
+        registered_by: r.registered_by || actor.full_name,
+        created_by: actor.id,
+        review_status: reviewStatus,
+        reviewed_by: null,
+        reviewed_at: null,
+        rejection_reason: null,
+      }
     })
 
     const { error } = await sb.from('chemicals').insert(payload)
     if (error) fail('Import failed', error)
-    await api.log(null, 'imported', `Imported ${rows.length} containers`, actor)
+    await api.log(null, 'imported', `Imported ${rows.length} containers${suffix}`, actor)
     return rows.length
   },
 
-  /** One-click load of the lab's original spreadsheet into an empty database. */
+  /**
+   * One-click load of the lab's original spreadsheet into an empty database.
+   * Restricted to admins in the UI — this represents the group's existing,
+   * already-vetted inventory, not a fresh submission, so it should not sit in
+   * anyone's approval queue.
+   */
   async loadStarterData(actor: Profile): Promise<number> {
     const existing = await api.listChemicals()
     const taken = new Set(existing.map((c) => c.code))
@@ -425,6 +542,15 @@ export const api = {
       void sb.removeChannel(channel)
     }
   },
+}
+
+function logSubmission(row: Chemical, actor: Profile) {
+  logLocal(
+    row,
+    row.review_status === 'approved' ? 'created' : 'submitted',
+    row.review_status === 'approved' ? `Registered ${row.name}` : `Submitted ${row.name} for approval`,
+    actor,
+  )
 }
 
 function logLocal(

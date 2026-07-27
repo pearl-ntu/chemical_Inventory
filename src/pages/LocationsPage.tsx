@@ -16,7 +16,9 @@ const GROUP_ICON: Record<string, typeof MapPin> = {
 }
 
 export default function LocationsPage() {
-  const { chemicals, loading } = useInventory()
+  // The shelf map shows the vetted shelf only — a pending submission isn't
+  // confirmed to be physically on that shelf yet.
+  const { approvedChemicals: chemicals, loading } = useInventory()
   const [q, setQ] = useState('')
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [detail, setDetail] = useState<Chemical | null>(null)

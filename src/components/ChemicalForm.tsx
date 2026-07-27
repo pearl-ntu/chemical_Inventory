@@ -51,8 +51,10 @@ export function ChemicalForm({
   /** Pass an existing row to edit it; omit to register a new container. */
   editing?: Chemical | null
 }) {
-  const { chemicals, create, update } = useInventory()
-  const { profile } = useAuth()
+  // Suggestions and the duplicate check draw from the vetted shelf, not
+  // someone else's not-yet-approved submission.
+  const { approvedChemicals: chemicals, create, update } = useInventory()
+  const { profile, isAdmin } = useAuth()
   const toast = useToast()
 
   const [form, setForm] = useState<ChemicalInput>(() => blank({}, profile?.full_name ?? ''))
@@ -143,11 +145,19 @@ export function ChemicalForm({
           form.status === 'empty' ? (form.date_emptied ?? todayISO()) : null,
       }
       if (editing) {
-        await update(editing.id, payload)
-        toast.success(`${payload.name} updated.`)
+        const row = await update(editing.id, payload)
+        if (row.review_status === 'pending' && editing.review_status !== 'pending') {
+          toast.info(`${row.name} updated and sent back for admin approval.`)
+        } else {
+          toast.success(`${row.name} updated.`)
+        }
       } else {
         const row = await create(payload)
-        toast.success(`${row.name} registered as ${row.code}.`)
+        if (row.review_status === 'pending') {
+          toast.info(`${row.name} submitted as ${row.code} — an admin needs to approve it before the group sees it.`)
+        } else {
+          toast.success(`${row.name} registered as ${row.code}.`)
+        }
       }
       onClose()
     } catch (err) {
@@ -165,8 +175,12 @@ export function ChemicalForm({
       title={editing ? `Edit ${editing.code}` : 'Register a new container'}
       description={
         editing
-          ? 'Changes are logged with your name and the time.'
-          : 'One row per physical bottle. A PEARL code and QR label are generated for you.'
+          ? editing.review_status !== 'approved'
+            ? 'Saving sends this back to an admin for another look.'
+            : 'Changes are logged with your name and the time.'
+          : isAdmin
+            ? 'One row per physical bottle. A PEARL code and QR label are generated for you.'
+            : 'One row per physical bottle. It’ll wait for an admin to approve it before the rest of the group sees it.'
       }
       footer={
         <>

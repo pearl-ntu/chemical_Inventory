@@ -4,6 +4,7 @@ import {
   Activity,
   BarChart3,
   ChevronDown,
+  ClipboardCheck,
   FlaskConical,
   LayoutDashboard,
   LogOut,
@@ -15,13 +16,23 @@ import {
   Sun,
   Users,
   X,
+  type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useInventory } from '../context/InventoryContext'
 import { MODE, LAB_SUBTITLE } from '../lib/config'
 import { cx } from '../lib/utils'
 import { NtuBadge, Wordmark } from './Logo'
 
-const NAV = [
+interface NavItem {
+  to: string
+  label: string
+  icon: LucideIcon
+  end: boolean
+  badge?: number
+}
+
+const NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/inventory', label: 'Inventory', icon: FlaskConical, end: false },
   { to: '/locations', label: 'Locations', icon: MapPin, end: false },
@@ -144,7 +155,16 @@ function UserMenu() {
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { isAdmin } = useAuth()
-  const links = [...NAV, ...(isAdmin ? [{ to: '/members', label: 'Members', icon: Users, end: false }] : [])]
+  const { pendingChemicals } = useInventory()
+  const links = [
+    ...NAV,
+    ...(isAdmin
+      ? [
+          { to: '/approvals', label: 'Approvals', icon: ClipboardCheck, end: false, badge: pendingChemicals.length },
+          { to: '/members', label: 'Members', icon: Users, end: false },
+        ]
+      : []),
+  ]
 
   return (
     <>
@@ -152,7 +172,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <Wordmark />
       </div>
       <nav className="flex-1 space-y-0.5 px-3">
-        {links.map(({ to, label, icon: Icon, end }) => (
+        {links.map(({ to, label, icon: Icon, end, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -161,7 +181,12 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             className={({ isActive }) => cx('nav-link', isActive && 'nav-link-active')}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            {label}
+            <span className="flex-1">{label}</span>
+            {!!badge && (
+              <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                {badge}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

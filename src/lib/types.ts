@@ -1,5 +1,18 @@
 export type Status = 'active' | 'low' | 'empty' | 'disposed'
 
+/**
+ * The approval workflow, separate from the physical stock `status` above.
+ * Set by the server, never trusted from the client: see the triggers in
+ * supabase/schema.sql.
+ */
+export type ReviewStatus = 'pending' | 'approved' | 'rejected'
+
+export const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
+  pending: 'Awaiting approval',
+  approved: 'Approved',
+  rejected: 'Rejected',
+}
+
 export const STATUSES: Status[] = ['active', 'low', 'empty', 'disposed']
 
 export const STATUS_LABEL: Record<Status, string> = {
@@ -59,12 +72,16 @@ export interface Chemical {
   created_by: string | null
   created_at: string
   updated_at: string
+  review_status: ReviewStatus
+  reviewed_by: string | null
+  reviewed_at: string | null
+  rejection_reason: string | null
 }
 
 /** The subset a user actually types in the form. */
 export type ChemicalInput = Omit<
   Chemical,
-  'id' | 'created_at' | 'updated_at' | 'created_by' | 'code'
+  'id' | 'created_at' | 'updated_at' | 'created_by' | 'code' | 'review_status' | 'reviewed_by' | 'reviewed_at' | 'rejection_reason'
 > & { code?: string }
 
 export type Role = 'admin' | 'member' | 'viewer'
@@ -80,6 +97,9 @@ export interface Profile {
 
 export type ActivityAction =
   | 'created'
+  | 'submitted'
+  | 'approved'
+  | 'rejected'
   | 'updated'
   | 'deleted'
   | 'marked_empty'

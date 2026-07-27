@@ -24,7 +24,8 @@ It ships pre-loaded with the group's real inventory as of **27 July 2026** —
 
 | | |
 |---|---|
-| 🔑 **Accounts for everyone** | Sign-up with email + password. Three access levels — admin, member, viewer — enforced by the database, not just the interface. |
+| 🔑 **Accounts for everyone** | Sign up with a magic link, Google, or a password. Three access levels — admin, member, viewer — enforced by the database, not just the interface. |
+| ✅ **Approval queue** | A member's new registration waits for an admin to approve or reject it before the rest of the group sees it. An admin's own additions go live immediately. |
 | 🔍 **Instant search** | Press `/` anywhere. Search by name, CAS, PEARL code, supplier, shelf, or remarks, all at once. |
 | 🧪 **One row per bottle** | Amount, pack size, purity, supplier, catalogue number, project, price, opened date, expiry. |
 | 🗺️ **Shelf map** | Every fridge and cabinet with its contents, grouped into cold storage / cabinets / flammables store. |

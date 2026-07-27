@@ -64,10 +64,31 @@ create table if not exists public.chemicals (
   updated_at        timestamptz not null default now()
 );
 
-create index if not exists chemicals_name_idx     on public.chemicals (lower(name));
-create index if not exists chemicals_cas_idx      on public.chemicals (cas);
-create index if not exists chemicals_location_idx on public.chemicals (location);
-create index if not exists chemicals_status_idx   on public.chemicals (status);
+-- Approval workflow columns, added via ALTER so this file stays safe to
+-- re-run against a database that already has the table from an earlier
+-- version of this schema (not just a brand new one).
+alter table public.chemicals
+  add column if not exists review_status text not null default 'approved',
+  add column if not exists reviewed_by   uuid references auth.users on delete set null,
+  add column if not exists reviewed_at   timestamptz,
+  add column if not exists rejection_reason text;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'chemicals_review_status_check'
+  ) then
+    alter table public.chemicals
+      add constraint chemicals_review_status_check
+      check (review_status in ('pending', 'approved', 'rejected'));
+  end if;
+end $$;
+
+create index if not exists chemicals_name_idx          on public.chemicals (lower(name));
+create index if not exists chemicals_cas_idx           on public.chemicals (cas);
+create index if not exists chemicals_location_idx      on public.chemicals (location);
+create index if not exists chemicals_status_idx        on public.chemicals (status);
+create index if not exists chemicals_review_status_idx on public.chemicals (review_status);
 
 -- Full-text-ish search across the fields people actually search by.
 create index if not exists chemicals_search_idx on public.chemicals
@@ -153,6 +174,75 @@ create trigger chemicals_touch
   before update on public.chemicals
   for each row execute function public.touch_updated_at();
 
+-- ---------------------------------------------------------------------------
+-- Approval workflow
+--
+--   admin  submits  -> approved immediately (already trusted)
+--   member submits  -> pending, invisible to the rest of the group until an
+--                       admin approves it (see the select policy below)
+--
+-- Enforced here, not in the client: a member calling the API directly could
+-- otherwise set review_status = 'approved' on their own insert. These
+-- triggers make that impossible regardless of what the request body says.
+-- ---------------------------------------------------------------------------
+create or replace function public.enforce_review_on_insert()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public.current_user_role() = 'admin' then
+    new.review_status := coalesce(new.review_status, 'approved');
+  else
+    new.review_status   := 'pending';
+    new.reviewed_by      := null;
+    new.reviewed_at      := null;
+    new.rejection_reason := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists chemicals_enforce_review_insert on public.chemicals;
+create trigger chemicals_enforce_review_insert
+  before insert on public.chemicals
+  for each row execute function public.enforce_review_on_insert();
+
+create or replace function public.enforce_review_on_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.review_status is distinct from old.review_status then
+    -- Approving or rejecting is an admin-only action, whoever is issuing
+    -- the UPDATE. Stamp who did it and when — the client can't set these.
+    if public.current_user_role() <> 'admin' then
+      raise exception 'Only an admin can approve or reject a submission.';
+    end if;
+    new.reviewed_by := auth.uid();
+    new.reviewed_at := now();
+  elsif public.current_user_role() <> 'admin'
+        and old.review_status in ('pending', 'rejected')
+        and old.created_by = auth.uid() then
+    -- The submitter editing their own not-yet-approved entry is treated as a
+    -- resubmission: back to the queue, any earlier rejection note cleared.
+    new.review_status    := 'pending';
+    new.reviewed_by       := null;
+    new.reviewed_at       := null;
+    new.rejection_reason := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists chemicals_enforce_review_update on public.chemicals;
+create trigger chemicals_enforce_review_update
+  before update on public.chemicals
+  for each row execute function public.enforce_review_on_update();
+
 -- Allocate the next PEARL-#### code. Used when the client doesn't supply one.
 create or replace function public.next_chemical_code()
 returns text
@@ -168,9 +258,12 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
---   viewer -> read only
---   member -> read + add/edit inventory
---   admin  -> everything, including deletes and managing roles
+--   viewer -> read only (approved entries only)
+--   member -> read approved entries + their own pending/rejected ones;
+--             add new entries (held for admin approval); edit approved
+--             entries or their own unapproved ones
+--   admin  -> everything, including approving/rejecting, deletes, and
+--             managing roles
 -- ---------------------------------------------------------------------------
 alter table public.profiles     enable row level security;
 alter table public.chemicals    enable row level security;
@@ -198,11 +291,20 @@ create policy "admins manage profiles"
   with check (public.current_user_role() = 'admin');
 
 -- chemicals -----------------------------------------------------------------
+-- A pending or rejected submission is visible only to the person who
+-- submitted it and to admins (who need to see it to review it). Everyone
+-- else — including other members — simply doesn't see the row until it's
+-- approved, which is what makes the queue actually gate the shared shelf
+-- rather than just hiding a button in the UI.
 drop policy if exists "inventory readable by signed-in users" on public.chemicals;
 create policy "inventory readable by signed-in users"
   on public.chemicals for select
   to authenticated
-  using (true);
+  using (
+    review_status = 'approved'
+    or created_by = auth.uid()
+    or public.current_user_role() = 'admin'
+  );
 
 drop policy if exists "members add inventory" on public.chemicals;
 create policy "members add inventory"
@@ -210,12 +312,28 @@ create policy "members add inventory"
   to authenticated
   with check (public.current_user_role() in ('admin', 'member'));
 
+-- A member may edit any already-approved row (the shared, vetted shelf stays
+-- collaboratively maintained, as before) or their own not-yet-approved
+-- submission (to fix and resubmit). They may not touch someone else's
+-- pending or rejected entry — an admin can, to review it.
 drop policy if exists "members edit inventory" on public.chemicals;
 create policy "members edit inventory"
   on public.chemicals for update
   to authenticated
-  using (public.current_user_role() in ('admin', 'member'))
-  with check (public.current_user_role() in ('admin', 'member'));
+  using (
+    public.current_user_role() = 'admin'
+    or (
+      public.current_user_role() = 'member'
+      and (review_status = 'approved' or created_by = auth.uid())
+    )
+  )
+  with check (
+    public.current_user_role() = 'admin'
+    or (
+      public.current_user_role() = 'member'
+      and (review_status = 'approved' or created_by = auth.uid())
+    )
+  );
 
 -- Deleting is deliberately narrow: the person who registered the container, or
 -- an admin. Everyone else marks it `empty`, which keeps the history intact.
@@ -258,5 +376,6 @@ create or replace view public.location_summary
     count(*) filter (where status = 'low')    as low,
     count(*) filter (where status = 'empty')  as empty
   from public.chemicals
+  where review_status = 'approved'
   group by 1
   order by 2 desc;

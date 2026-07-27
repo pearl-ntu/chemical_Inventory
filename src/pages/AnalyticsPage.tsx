@@ -61,7 +61,8 @@ function humanAmount(value: number, small: string, big: string): string {
 }
 
 export default function AnalyticsPage() {
-  const { chemicals, loading } = useInventory()
+  // Analytics describe the confirmed shelf, not submissions still in review.
+  const { approvedChemicals: chemicals, loading } = useInventory()
 
   const data = useMemo(() => {
     const inStock = chemicals.filter((c) => c.status === 'active' || c.status === 'low')

@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import {
   Building2,
   CalendarDays,
+  Check,
   CircleSlash,
+  Clock,
   Copy,
   ExternalLink,
   FileText,
@@ -11,6 +13,8 @@ import {
   Pencil,
   Trash2,
   User,
+  X,
+  XCircle,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
@@ -18,9 +22,10 @@ import { useToast } from '../context/ToastContext'
 import * as pubchem from '../lib/pubchem'
 import { qrDataUrl } from '../lib/qr'
 import { STATUS_LABEL, type Chemical } from '../lib/types'
-import { cx, formatDate, formatSize, statusTone } from '../lib/utils'
+import { cx, formatDate, formatRelative, formatSize, statusTone } from '../lib/utils'
 import { HazardBadges } from './HazardBadges'
-import { ConfirmDialog, Drawer, Spinner } from './ui'
+import { ReviewBadge } from './ReviewBadge'
+import { ConfirmDialog, Field, Modal, Drawer, Spinner } from './ui'
 
 function Row({
   icon,
@@ -52,12 +57,14 @@ export function ChemicalDrawer({
   onEdit: (c: Chemical) => void
 }) {
   const { canEdit, isAdmin, profile } = useAuth()
-  const { markEmpty, restock, remove } = useInventory()
+  const { markEmpty, restock, remove, approve, reject } = useInventory()
   const toast = useToast()
 
   const [qr, setQr] = useState<string | null>(null)
   const [info, setInfo] = useState<pubchem.PubChemInfo | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
+  const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -107,22 +114,44 @@ export function ChemicalDrawer({
         footer={
           canEdit ? (
             <>
+              {isAdmin && c.review_status === 'pending' && (
+                <>
+                  <button
+                    className="btn-secondary text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
+                    disabled={busy}
+                    onClick={() => {
+                      setReason('')
+                      setRejecting(true)
+                    }}
+                  >
+                    <X className="h-4 w-4" /> Reject
+                  </button>
+                  <button
+                    className="btn-primary"
+                    disabled={busy}
+                    onClick={() => void act(() => approve(c))}
+                  >
+                    <Check className="h-4 w-4" /> Approve
+                  </button>
+                </>
+              )}
               <button className="btn-secondary" onClick={() => onEdit(c)} disabled={busy}>
                 <Pencil className="h-4 w-4" /> Edit
               </button>
-              {c.status === 'empty' ? (
-                <button
-                  className="btn-secondary"
-                  disabled={busy}
-                  onClick={() => void act(() => restock(c, Math.max(1, c.quantity || 1)))}
-                >
-                  <PackagePlus className="h-4 w-4" /> Mark back in stock
-                </button>
-              ) : (
-                <button className="btn-secondary" disabled={busy} onClick={() => void act(() => markEmpty(c))}>
-                  <CircleSlash className="h-4 w-4" /> Mark empty
-                </button>
-              )}
+              {c.review_status === 'approved' &&
+                (c.status === 'empty' ? (
+                  <button
+                    className="btn-secondary"
+                    disabled={busy}
+                    onClick={() => void act(() => restock(c, Math.max(1, c.quantity || 1)))}
+                  >
+                    <PackagePlus className="h-4 w-4" /> Mark back in stock
+                  </button>
+                ) : (
+                  <button className="btn-secondary" disabled={busy} onClick={() => void act(() => markEmpty(c))}>
+                    <CircleSlash className="h-4 w-4" /> Mark empty
+                  </button>
+                ))}
               {canDelete && (
                 <button
                   className="btn-ghost ml-auto text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
@@ -141,9 +170,33 @@ export function ChemicalDrawer({
         }
       >
         <div className="space-y-5">
+          {/* review status -------------------------------------------------- */}
+          {c.review_status === 'pending' && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/25 dark:bg-amber-500/10">
+              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p className="leading-snug text-amber-900 dark:text-amber-200">
+                Submitted {formatRelative(c.created_at)} — waiting for an admin to approve it before the
+                rest of the group sees it.
+              </p>
+            </div>
+          )}
+          {c.review_status === 'rejected' && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm dark:border-rose-500/25 dark:bg-rose-500/10">
+              <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+              <div className="text-rose-900 dark:text-rose-200">
+                <p className="font-semibold">Rejected</p>
+                {c.rejection_reason && <p className="mt-0.5 leading-snug">{c.rejection_reason}</p>}
+                <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-300/70">
+                  Editing this and saving sends it back to the queue for another look.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* header ------------------------------------------------------- */}
           <div className="flex flex-wrap items-center gap-2">
             <span className={cx('badge', statusTone(c.status))}>{STATUS_LABEL[c.status]}</span>
+            {c.review_status !== 'approved' && <ReviewBadge status={c.review_status} />}
             <button
               onClick={() => void copyCode()}
               className="badge bg-ink-100 font-mono text-ink-700 ring-ink-500/20 hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-200 dark:ring-ink-700"
@@ -317,6 +370,44 @@ export function ChemicalDrawer({
           })
         }
       />
+
+      <Modal
+        open={rejecting}
+        onClose={() => setRejecting(false)}
+        title={`Reject ${c.name}`}
+        description="This goes back to the submitter, who can fix it and resubmit."
+        size="sm"
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setRejecting(false)} disabled={busy}>
+              Cancel
+            </button>
+            <button
+              className="btn-danger"
+              disabled={busy || !reason.trim()}
+              onClick={() =>
+                void act(async () => {
+                  await reject(c, reason.trim())
+                  setRejecting(false)
+                })
+              }
+            >
+              {busy && <Spinner />}
+              Reject submission
+            </button>
+          </>
+        }
+      >
+        <Field label="Reason" required hint="Be specific — this is what the submitter sees.">
+          <textarea
+            autoFocus
+            className="input min-h-[88px] resize-y"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Wrong CAS number — please double-check against the bottle label."
+          />
+        </Field>
+      </Modal>
     </>
   )
 }

@@ -9,8 +9,8 @@ import type { Profile, Role } from '../lib/types'
 import { formatDate } from '../lib/utils'
 
 const ROLE_HELP: Record<Role, string> = {
-  admin: 'Full control, including deleting records and changing what others can do.',
-  member: 'Can add, edit and mark containers empty. The right level for most people.',
+  admin: 'Full control: additions go live immediately, plus approving/rejecting others’ submissions, deleting records, and changing what people can do.',
+  member: 'Can add and edit containers, but a new registration waits in the Approvals queue for an admin to sign off before the group sees it.',
   viewer: 'Read-only. Useful for visitors, collaborators and undergraduates.',
 }
 
