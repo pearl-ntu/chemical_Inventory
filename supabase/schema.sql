@@ -69,6 +69,31 @@ begin
   end if;
 end $$;
 
+-- Safety net, not a one-time migration: a profiles row is normally created by
+-- the on_auth_user_created trigger below, but that only fires for accounts
+-- created *after* it existed — anyone signed up directly against auth.users
+-- before this whole table was added has no row at all, and gets stuck on the
+-- read-only, in-memory fallback in api.ts's currentProfile() forever (which
+-- can't know the account already has a real password, so it keeps prompting
+-- for one Supabase then correctly refuses to "change" to the same value).
+-- Grandfathered the same way `approved` was above: viewer (an admin already
+-- exists for every project reaching this point — the very first account is
+-- handled by the trigger itself), approved so nobody who could already use
+-- the app gets newly locked out, has_password read straight from whether a
+-- real password is on file. Safe to re-run — the anti-join only ever
+-- targets rows that are still actually missing.
+insert into public.profiles (id, email, full_name, role, approved, has_password)
+select
+  u.id,
+  u.email,
+  coalesce(u.raw_user_meta_data ->> 'full_name', split_part(u.email, '@', 1)),
+  'viewer',
+  true,
+  (u.encrypted_password is not null and u.encrypted_password <> '')
+from auth.users u
+left join public.profiles p on p.id = u.id
+where p.id is null;
+
 -- ---------------------------------------------------------------------------
 -- chemicals — one row per physical container on the shelf
 -- ---------------------------------------------------------------------------
