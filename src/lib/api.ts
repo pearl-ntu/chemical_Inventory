@@ -68,6 +68,7 @@ export const auth = {
         full_name: (user.user_metadata?.full_name as string) ?? user.email?.split('@')[0] ?? '',
         role: 'viewer',
         approved: false,
+        has_password: false,
         lab_position: null,
         created_at: user.created_at ?? new Date().toISOString(),
       }
@@ -214,11 +215,17 @@ export const auth = {
     newPassword: string,
   ): Promise<void> {
     if (!IS_CLOUD) {
-      // Demo mode is password-only (no magic link), so there's always an
-      // existing password to check here.
-      if (!currentPassword) throw new ApiError('Enter your current password.')
-      const profile = await localDb.verifyUser(email, currentPassword)
-      await localDb.setPassword(profile.id, newPassword)
+      const existing = localDb.users().find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
+      // Everyday demo accounts are password-only, so there's always one to
+      // check. The exception is an account carried over from before this
+      // field existed (has_password missing/false) — same "nothing to
+      // verify yet" case as a real magic-link account.
+      if (existing?.has_password) {
+        if (!currentPassword) throw new ApiError('Enter your current password.')
+        await localDb.verifyUser(email, currentPassword)
+      }
+      if (!existing) throw new ApiError('No account found for that email on this device.')
+      await localDb.setPassword(existing.id, newPassword)
       return
     }
     const sb = requireSupabase()
@@ -232,6 +239,12 @@ export const auth = {
 
     const { error } = await sb.auth.updateUser({ password: newPassword })
     if (error) throw new ApiError(error.message)
+
+    // The trigger only sets this at account creation — flip it here too, or
+    // someone who just set their first password would still see the "set a
+    // password" prompt on their next sign-in.
+    const user = (await sb.auth.getUser()).data.user
+    if (user) await sb.from('profiles').update({ has_password: true }).eq('id', user.id)
   },
 
   async updateProfile(id: string, patch: Partial<Profile>): Promise<Profile> {

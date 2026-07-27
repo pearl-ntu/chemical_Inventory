@@ -47,6 +47,28 @@ end $$;
 
 create index if not exists profiles_approved_idx on public.profiles (approved);
 
+-- `has_password` gates the one-time "set a password" prompt shown right
+-- after a magic-link/invite sign-in — someone who's only ever clicked an
+-- email link has no password to fall back on if the next email is slow or
+-- lands in spam. Backfilled precisely from whether Supabase actually stored
+-- a password hash for the account, not guessed — so nobody who already has
+-- a password gets nagged for one.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'has_password'
+  ) then
+    alter table public.profiles add column has_password boolean not null default false;
+    update public.profiles p
+    set has_password = true
+    from auth.users u
+    where u.id = p.id
+      and u.encrypted_password is not null
+      and u.encrypted_password <> '';
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- chemicals — one row per physical container on the shelf
 -- ---------------------------------------------------------------------------
@@ -217,13 +239,14 @@ declare
 begin
   select count(*) = 0 into is_first from public.profiles;
 
-  insert into public.profiles (id, email, full_name, role, approved)
+  insert into public.profiles (id, email, full_name, role, approved, has_password)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)),
     case when is_first then 'admin' else 'viewer' end,
-    is_first
+    is_first,
+    new.encrypted_password is not null and new.encrypted_password <> ''
   )
   on conflict (id) do nothing;
 

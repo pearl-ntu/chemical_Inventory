@@ -171,6 +171,8 @@ export const localDb = {
       // storage — so there's no benefit to the account-approval gate here,
       // only friction. Every demo account is approved immediately.
       approved: true,
+      // Demo mode is password-only (no magic link), so there's always one.
+      has_password: true,
       lab_position: null,
       created_at: todayISO(),
       passwordHash: await hashPassword(password),
@@ -204,7 +206,7 @@ export const localDb = {
     const users = localDb.users()
     const idx = users.findIndex((u) => u.id === id)
     if (idx === -1) throw new Error('User not found')
-    users[idx] = { ...users[idx], passwordHash: await hashPassword(newPassword) }
+    users[idx] = { ...users[idx], passwordHash: await hashPassword(newPassword), has_password: true }
     localDb.saveUsers(users)
   },
 

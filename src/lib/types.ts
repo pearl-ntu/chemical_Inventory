@@ -85,6 +85,13 @@ export interface Profile {
    * already-approved account can do.
    */
   approved: boolean
+  /**
+   * Whether this account has ever set a password — false for someone who's
+   * only ever clicked a magic-link/invite email. Gates the one-time
+   * "set a password" prompt shown right after that first sign-in, so a slow
+   * or misdirected email isn't the only way back in from then on.
+   */
+  has_password: boolean
   lab_position: string | null
   created_at: string
 }

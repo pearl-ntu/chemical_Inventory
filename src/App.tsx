@@ -12,6 +12,7 @@ import LocationsPage from './pages/LocationsPage'
 import LoginPage from './pages/LoginPage'
 import MembersPage from './pages/MembersPage'
 import PendingApprovalPage from './pages/PendingApprovalPage'
+import SetPasswordPage from './pages/SetPasswordPage'
 import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
@@ -26,6 +27,10 @@ export default function App() {
   }
 
   if (!profile) return <LoginPage />
+
+  // A magic-link/invite sign-in with no password set yet — one-time detour
+  // before anything else, so the email link isn't the only way back in.
+  if (!profile.has_password) return <SetPasswordPage />
 
   // Signed in, but not let in yet — don't even mount the inventory shell:
   // every query it would make is blocked by RLS anyway, so there's nothing
