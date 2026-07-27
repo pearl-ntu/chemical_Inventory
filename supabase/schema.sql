@@ -64,10 +64,13 @@ create table if not exists public.chemicals (
   updated_at        timestamptz not null default now()
 );
 
-create index if not exists chemicals_name_idx     on public.chemicals (lower(name));
-create index if not exists chemicals_cas_idx      on public.chemicals (cas);
-create index if not exists chemicals_location_idx on public.chemicals (location);
-create index if not exists chemicals_status_idx   on public.chemicals (status);
+create index if not exists chemicals_name_idx       on public.chemicals (lower(name));
+create index if not exists chemicals_cas_idx        on public.chemicals (cas);
+create index if not exists chemicals_location_idx   on public.chemicals (location);
+create index if not exists chemicals_status_idx     on public.chemicals (status);
+-- Covers the created_by foreign key — without it, every delete/update on
+-- auth.users forces a full table scan of chemicals to check for orphans.
+create index if not exists chemicals_created_by_idx on public.chemicals (created_by);
 
 -- Full-text-ish search across the fields people actually search by.
 create index if not exists chemicals_search_idx on public.chemicals
@@ -90,7 +93,9 @@ create table if not exists public.activity_log (
   created_at    timestamptz not null default now()
 );
 
-create index if not exists activity_created_idx on public.activity_log (created_at desc);
+create index if not exists activity_created_idx    on public.activity_log (created_at desc);
+create index if not exists activity_chemical_id_idx on public.activity_log (chemical_id);
+create index if not exists activity_user_id_idx     on public.activity_log (user_id);
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -105,8 +110,14 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce((select role from public.profiles where id = auth.uid()), 'viewer');
+  select coalesce((select role from public.profiles where id = (select auth.uid())), 'viewer');
 $$;
+
+-- Only signed-in users ever need this (it's used inside RLS policies
+-- evaluated for the `authenticated` role); revoking the default PUBLIC grant
+-- stops an anonymous request from calling it directly for no reason.
+revoke execute on function public.current_user_role() from public;
+grant execute on function public.current_user_role() to authenticated;
 
 -- Auto-create a profile whenever someone signs up. The very first account to
 -- be created becomes the admin, so the lab is never locked out of its own data.
@@ -134,6 +145,11 @@ begin
 end;
 $$;
 
+-- Nothing except the trigger below ever needs to call this directly — a
+-- trigger fires with the definer's rights regardless of grants, so revoking
+-- PUBLIC's default execute grant closes it off without touching the trigger.
+revoke execute on function public.handle_new_user() from public;
+
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
@@ -141,7 +157,10 @@ create trigger on_auth_user_created
 
 -- Keep updated_at honest.
 create or replace function public.touch_updated_at()
-returns trigger language plpgsql as $$
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   new.updated_at := now();
   return new;
@@ -158,6 +177,7 @@ create or replace function public.next_chemical_code()
 returns text
 language sql
 stable
+set search_path = public
 as $$
   select 'PEARL-' || lpad((
     coalesce(max(nullif(regexp_replace(code, '\D', '', 'g'), '')::bigint), 0) + 1
@@ -177,25 +197,36 @@ alter table public.chemicals    enable row level security;
 alter table public.activity_log enable row level security;
 
 -- profiles ------------------------------------------------------------------
+-- One policy per command, not "for all" layered on top of the others — two
+-- overlapping permissive policies on the same command both get evaluated and
+-- OR'd together for every row, which is wasted work Postgres has to redo on
+-- every query. A single policy per command does the same thing, once.
 drop policy if exists "profiles readable by signed-in users" on public.profiles;
 create policy "profiles readable by signed-in users"
   on public.profiles for select
   to authenticated
   using (true);
 
+-- Either you're editing your own profile (and can't hand yourself a new
+-- role that way — that goes through the admin branch below), or you're an
+-- admin editing anyone's, role included.
 drop policy if exists "users edit their own profile" on public.profiles;
-create policy "users edit their own profile"
+drop policy if exists "profile updates" on public.profiles;
+create policy "profile updates"
   on public.profiles for update
   to authenticated
-  using (id = auth.uid())
-  with check (id = auth.uid() and role = (select role from public.profiles p where p.id = auth.uid()));
+  using (id = (select auth.uid()) or public.current_user_role() = 'admin')
+  with check (
+    (id = (select auth.uid()) and role = (select role from public.profiles p where p.id = (select auth.uid())))
+    or public.current_user_role() = 'admin'
+  );
 
 drop policy if exists "admins manage profiles" on public.profiles;
-create policy "admins manage profiles"
-  on public.profiles for all
+drop policy if exists "admins delete profiles" on public.profiles;
+create policy "admins delete profiles"
+  on public.profiles for delete
   to authenticated
-  using (public.current_user_role() = 'admin')
-  with check (public.current_user_role() = 'admin');
+  using (public.current_user_role() = 'admin');
 
 -- chemicals -----------------------------------------------------------------
 drop policy if exists "inventory readable by signed-in users" on public.chemicals;
@@ -223,7 +254,7 @@ drop policy if exists "owners and admins delete inventory" on public.chemicals;
 create policy "owners and admins delete inventory"
   on public.chemicals for delete
   to authenticated
-  using (public.current_user_role() = 'admin' or created_by = auth.uid());
+  using (public.current_user_role() = 'admin' or created_by = (select auth.uid()));
 
 -- activity_log --------------------------------------------------------------
 drop policy if exists "activity readable by signed-in users" on public.activity_log;
@@ -236,7 +267,7 @@ drop policy if exists "signed-in users append activity" on public.activity_log;
 create policy "signed-in users append activity"
   on public.activity_log for insert
   to authenticated
-  with check (user_id = auth.uid());
+  with check (user_id = (select auth.uid()));
 -- No update/delete policy: the audit trail is append-only by construction.
 
 -- ---------------------------------------------------------------------------
