@@ -1,0 +1,159 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-50 text-ink-900 antialiased dark:bg-ink-950 dark:text-ink-100;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  }
+
+  /* A quieter scrollbar that suits both themes. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 0.45) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-300/60 dark:bg-ink-700;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-pearl-500 ring-offset-2 ring-offset-white dark:ring-offset-ink-950;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-ink-200 bg-white shadow-card dark:border-ink-800 dark:bg-ink-900;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm
+           font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-pearl-600 text-white hover:bg-pearl-700 active:bg-pearl-800;
+  }
+  .btn-secondary {
+    @apply btn border border-ink-200 bg-white text-ink-700 hover:bg-ink-50
+           dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800;
+  }
+  .btn-ghost {
+    @apply btn text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800;
+  }
+  .btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900
+           placeholder:text-ink-400 focus:border-pearl-500 focus:outline-none focus:ring-1
+           focus:ring-pearl-500 disabled:bg-ink-50
+           dark:border-ink-700 dark:bg-ink-950 dark:text-ink-100 dark:placeholder:text-ink-500
+           dark:disabled:bg-ink-900;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-ink-600
+           transition-colors hover:bg-ink-100 hover:text-ink-900
+           dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100;
+  }
+  .nav-link-active {
+    @apply bg-pearl-50 text-pearl-800 hover:bg-pearl-50 hover:text-pearl-800
+           dark:bg-pearl-500/10 dark:text-pearl-300 dark:hover:bg-pearl-500/10 dark:hover:text-pearl-300;
+  }
+
+  .th {
+    @apply whitespace-nowrap px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide
+           text-ink-500 dark:text-ink-400;
+  }
+  .td {
+    @apply px-3 py-2.5 text-sm text-ink-700 dark:text-ink-300;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Chart tokens. Charts are written against these roles, never raw hex, so the
+   light/dark pairs swap in exactly one place.
+
+   The status four are the fixed status palette (good / warning / neutral /
+   critical) — validated for colour-vision separation on both surfaces. Light
+   mode's amber sits under 3:1 against white by design, so every status mark in
+   this app ships with a visible label beside it, never colour alone.
+   --------------------------------------------------------------------------- */
+.viz-root {
+  --viz-surface: #ffffff;
+  --viz-grid: #e1e0d9;
+  --viz-axis: #c3c2b7;
+  --viz-muted: #898781;
+  --viz-ink: #333a47;
+
+  --viz-series: #158284; /* brand teal — single-series magnitude bars */
+  --viz-series-soft: #abeae7;
+
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-neutral: #8595ae;
+  --viz-critical: #d03b3b;
+}
+
+.dark .viz-root {
+  --viz-surface: #333a47;
+  --viz-grid: #424e63;
+  --viz-axis: #505f7a;
+  --viz-muted: #8595ae;
+  --viz-ink: #eceef2;
+
+  --viz-series: #39bfbe;
+  --viz-series-soft: #155356;
+
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-neutral: #b0bacb;
+  --viz-critical: #e66767;
+}
+
+/* Printed QR labels: one clean grid, nothing else on the page. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  .print-sheet {
+    padding: 0 !important;
+  }
+  .label-cell {
+    break-inside: avoid;
+    border: 1px dashed #cbd5e1 !important;
+  }
+}
