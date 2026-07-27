@@ -13,7 +13,9 @@ import type { Profile } from '../lib/types'
 interface AuthState {
   profile: Profile | null
   loading: boolean
-  /** True for admins and members; false for viewers and signed-out visitors. */
+  /** True once an admin has approved the account — before that, nothing else matters. */
+  isApproved: boolean
+  /** True for approved admins and members; false for viewers, unapproved accounts, and signed-out visitors. */
   canEdit: boolean
   isAdmin: boolean
   signIn: (email: string, password: string) => Promise<void>
@@ -54,8 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       profile,
       loading,
-      canEdit: profile?.role === 'admin' || profile?.role === 'member',
-      isAdmin: profile?.role === 'admin',
+      isApproved: profile?.approved === true,
+      canEdit: profile?.approved === true && (profile?.role === 'admin' || profile?.role === 'member'),
+      isAdmin: profile?.approved === true && profile?.role === 'admin',
       async signIn(email, password) {
         setProfile(await auth.signIn(email, password))
       },

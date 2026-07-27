@@ -124,10 +124,19 @@ export default function LoginPage() {
   return (
     <div className="grid min-h-full lg:grid-cols-2">
       {/* ---------------------------------------------------------------- brand */}
-      <div className="relative hidden overflow-hidden bg-[#0b1830] lg:flex lg:flex-col lg:justify-between lg:p-12">
-        {/* The mark itself, oversized and bled off the corner — the one
-            deliberate flourish, everything else on this panel stays quiet. */}
-        <Logo className="pointer-events-none absolute -right-20 -top-32 h-[26rem] w-[26rem] opacity-90" />
+      {/* Deliberately NOT `justify-between`: that spreads the three blocks
+          across whatever height the viewport happens to have, so the
+          headline's position — and its clearance from the corner logo below
+          — shifted with every screen size. A short 1024×768 laptop pushed it
+          up far enough to collide. Flowing top-down with a fixed gap keeps
+          the headline's position constant regardless of viewport height;
+          only the footer needs to track the bottom, via margin-top auto. */}
+      <div className="relative hidden overflow-hidden bg-[#0b1830] lg:flex lg:flex-col lg:p-12">
+        {/* The mark itself, bled off the corner — the one deliberate
+            flourish, everything else on this panel stays quiet. Sized and
+            positioned with real clearance under the headline below, checked
+            at both 1024×768 and 1440×900. */}
+        <Logo className="pointer-events-none absolute -right-14 -top-16 h-64 w-64 opacity-90" />
         <div
           className="pointer-events-none absolute inset-0"
           style={{
@@ -146,7 +155,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="relative max-w-md">
+        <div className="relative mt-32 max-w-md">
           <h1 className="text-[2rem] font-bold leading-[1.15] tracking-tight text-white">
             Every reagent, every shelf, one source of truth.
           </h1>
@@ -170,7 +179,7 @@ export default function LoginPage() {
           </dl>
         </div>
 
-        <div className="relative flex items-center justify-between">
+        <div className="relative mt-auto flex items-center justify-between pt-10">
           <p className="text-xs leading-snug text-white/45">{LAB_SUBTITLE}</p>
           <NtuBadge className="opacity-80 [&_span:last-child]:text-white/60" />
         </div>
@@ -200,7 +209,7 @@ export default function LoginPage() {
           <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
             {tab === 'signin'
               ? 'Sign in to see the group’s live chemical inventory.'
-              : 'Anyone in the group can make an account. Your name is stamped on what you add.'}
+              : 'Anyone can create an account — an admin approves it before you see anything, so this is safe to leave open.'}
           </p>
 
           <div className="mt-6 grid grid-cols-2 gap-1 rounded-lg bg-ink-100 p-1 dark:bg-ink-800">

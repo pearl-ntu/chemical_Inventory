@@ -26,6 +26,27 @@ create table if not exists public.profiles (
   created_at   timestamptz not null default now()
 );
 
+-- `approved` gates whether an account can see the inventory *at all* — added
+-- via a guarded block, not a plain ALTER, because the backfill below must run
+-- exactly once. Re-running this file on a database that already has the
+-- column must not re-approve everyone who's since signed up and is still
+-- waiting on an admin.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'approved'
+  ) then
+    alter table public.profiles add column approved boolean not null default false;
+    -- Grandfather in every account that already existed before this gate was
+    -- added — nobody who already had access should be locked out by the
+    -- upgrade. Only sign-ups from this point on start unapproved.
+    update public.profiles set approved = true;
+  end if;
+end $$;
+
+create index if not exists profiles_approved_idx on public.profiles (approved);
+
 -- ---------------------------------------------------------------------------
 -- chemicals — one row per physical container on the shelf
 -- ---------------------------------------------------------------------------
@@ -119,8 +140,32 @@ $$;
 revoke execute on function public.current_user_role() from public;
 grant execute on function public.current_user_role() to authenticated;
 
+-- Whether an admin has actually let this account in. This is the real gate on
+-- an open sign-up page: `role` only controls what an *approved* account can
+-- do, so without this, a brand-new, unvetted account could read the entire
+-- inventory the instant it signed up.
+create or replace function public.is_approved()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select approved from public.profiles where id = (select auth.uid())), false);
+$$;
+
+revoke execute on function public.is_approved() from public;
+grant execute on function public.is_approved() to authenticated;
+
 -- Auto-create a profile whenever someone signs up. The very first account to
 -- be created becomes the admin, so the lab is never locked out of its own data.
+--
+-- Everyone after that lands as `viewer` — read-only — not `member`. Sign-up
+-- is open to any email address (no domain allow-list), so a brand-new,
+-- unvetted account should not be able to add, edit, or delete inventory on
+-- day one. An admin promotes someone to `member` from the Members page once
+-- they actually recognise them. This is the real gate — not a UI toggle, a
+-- default that ships with write access switched off.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -132,12 +177,13 @@ declare
 begin
   select count(*) = 0 into is_first from public.profiles;
 
-  insert into public.profiles (id, email, full_name, role)
+  insert into public.profiles (id, email, full_name, role, approved)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)),
-    case when is_first then 'admin' else 'member' end
+    case when is_first then 'admin' else 'viewer' end,
+    is_first
   )
   on conflict (id) do nothing;
 
@@ -188,9 +234,11 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
---   viewer -> read only
---   member -> read + add/edit inventory
---   admin  -> everything, including deletes and managing roles
+--   (unapproved) -> sees nothing at all except their own profile row
+--   viewer       -> read only, once approved
+--   member       -> read + add/edit inventory, once approved
+--   admin        -> everything, including approving accounts, deletes, and
+--                   managing roles
 -- ---------------------------------------------------------------------------
 alter table public.profiles     enable row level security;
 alter table public.chemicals    enable row level security;
@@ -201,11 +249,15 @@ alter table public.activity_log enable row level security;
 -- overlapping permissive policies on the same command both get evaluated and
 -- OR'd together for every row, which is wasted work Postgres has to redo on
 -- every query. A single policy per command does the same thing, once.
+--
+-- A pending account can only see its OWN row (so the app can show "you're
+-- waiting on approval, signed in as you@example.com") — not the rest of the
+-- group's names and emails. Once approved, the member directory opens up.
 drop policy if exists "profiles readable by signed-in users" on public.profiles;
 create policy "profiles readable by signed-in users"
   on public.profiles for select
   to authenticated
-  using (true);
+  using (id = (select auth.uid()) or public.is_approved());
 
 -- Either you're editing your own profile (and can't hand yourself a new
 -- role that way — that goes through the admin branch below), or you're an
@@ -229,24 +281,28 @@ create policy "admins delete profiles"
   using (public.current_user_role() = 'admin');
 
 -- chemicals -----------------------------------------------------------------
+-- The core of the access-approval gate: an unapproved account cannot see a
+-- single row here, full stop — not "sees it read-only", not "sees it with
+-- edit buttons hidden". This is what actually stops "anyone can sign up and
+-- see our inventory"; the sign-up form itself was never the real boundary.
 drop policy if exists "inventory readable by signed-in users" on public.chemicals;
 create policy "inventory readable by signed-in users"
   on public.chemicals for select
   to authenticated
-  using (true);
+  using (public.is_approved());
 
 drop policy if exists "members add inventory" on public.chemicals;
 create policy "members add inventory"
   on public.chemicals for insert
   to authenticated
-  with check (public.current_user_role() in ('admin', 'member'));
+  with check (public.is_approved() and public.current_user_role() in ('admin', 'member'));
 
 drop policy if exists "members edit inventory" on public.chemicals;
 create policy "members edit inventory"
   on public.chemicals for update
   to authenticated
-  using (public.current_user_role() in ('admin', 'member'))
-  with check (public.current_user_role() in ('admin', 'member'));
+  using (public.is_approved() and public.current_user_role() in ('admin', 'member'))
+  with check (public.is_approved() and public.current_user_role() in ('admin', 'member'));
 
 -- Deleting is deliberately narrow: the person who registered the container, or
 -- an admin. Everyone else marks it `empty`, which keeps the history intact.
@@ -254,20 +310,25 @@ drop policy if exists "owners and admins delete inventory" on public.chemicals;
 create policy "owners and admins delete inventory"
   on public.chemicals for delete
   to authenticated
-  using (public.current_user_role() = 'admin' or created_by = (select auth.uid()));
+  using (
+    public.is_approved()
+    and (public.current_user_role() = 'admin' or created_by = (select auth.uid()))
+  );
 
 -- activity_log --------------------------------------------------------------
+-- Same gate: the audit trail names people and describes what changed, which
+-- an unapproved account has no business reading either.
 drop policy if exists "activity readable by signed-in users" on public.activity_log;
 create policy "activity readable by signed-in users"
   on public.activity_log for select
   to authenticated
-  using (true);
+  using (public.is_approved());
 
 drop policy if exists "signed-in users append activity" on public.activity_log;
 create policy "signed-in users append activity"
   on public.activity_log for insert
   to authenticated
-  with check (user_id = (select auth.uid()));
+  with check (public.is_approved() and user_id = (select auth.uid()));
 -- No update/delete policy: the audit trail is append-only by construction.
 
 -- ---------------------------------------------------------------------------

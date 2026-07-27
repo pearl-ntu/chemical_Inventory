@@ -1,5 +1,15 @@
 import { useState } from 'react'
-import { Cloud, Database, Download, HardDrive, RotateCcw, Save } from 'lucide-react'
+import {
+  Cloud,
+  Database,
+  Download,
+  Eye,
+  EyeOff,
+  HardDrive,
+  KeyRound,
+  RotateCcw,
+  Save,
+} from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { ConfirmDialog, Field, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -20,6 +30,37 @@ export default function SettingsPage() {
   const [position, setPosition] = useState(profile?.lab_position ?? '')
   const [saving, setSaving] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPasswords, setShowPasswords] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+
+  async function changePassword() {
+    setPasswordError(null)
+    if (!profile) return
+    // Demo mode is password-only, so there's always one to verify. In cloud
+    // mode someone who only ever used a magic link has none yet — leaving
+    // this blank sets their first password instead of changing one.
+    if (!currentPassword && MODE !== 'cloud') return setPasswordError('Enter your current password.')
+    if (newPassword.length < 8) return setPasswordError('New password needs at least 8 characters.')
+    if (newPassword !== confirmPassword) return setPasswordError('The two new passwords don’t match.')
+
+    setChangingPassword(true)
+    try {
+      await auth.changePassword(profile.email, currentPassword || null, newPassword)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      toast.success('Password changed.')
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : 'Could not change your password.')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
 
   async function saveProfile() {
     if (!profile) return
@@ -69,6 +110,71 @@ export default function SettingsPage() {
             <button className="btn-primary" onClick={() => void saveProfile()} disabled={saving}>
               {saving ? <Spinner /> : <Save className="h-4 w-4" />} Save profile
             </button>
+          </div>
+        </section>
+
+        {/* password -------------------------------------------------------- */}
+        <section className="card p-5">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-ink-500">
+            <KeyRound className="h-4 w-4" /> Password
+          </h2>
+          <div className="space-y-3">
+            <Field
+              label="Current password"
+              hint={
+                MODE === 'cloud'
+                  ? 'Leave blank if you only ever signed in with an email link.'
+                  : undefined
+              }
+            >
+              <input
+                className="input"
+                type={showPasswords ? 'text' : 'password'}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </Field>
+            <Field label="New password" hint="At least 8 characters.">
+              <input
+                className="input"
+                type={showPasswords ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </Field>
+            <Field label="Confirm new password">
+              <input
+                className="input"
+                type={showPasswords ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </Field>
+
+            {passwordError && (
+              <p className="text-xs text-rose-600 dark:text-rose-400">{passwordError}</p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                className="btn-primary"
+                onClick={() => void changePassword()}
+                disabled={changingPassword}
+              >
+                {changingPassword ? <Spinner /> : <KeyRound className="h-4 w-4" />} Change password
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-500 hover:text-ink-700 dark:hover:text-ink-300"
+                onClick={() => setShowPasswords((s) => !s)}
+              >
+                {showPasswords ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                {showPasswords ? 'Hide' : 'Show'} passwords
+              </button>
+            </div>
           </div>
         </section>
 

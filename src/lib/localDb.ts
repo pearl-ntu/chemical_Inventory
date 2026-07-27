@@ -165,6 +165,10 @@ export const localDb = {
       full_name: fullName || email.split('@')[0],
       // First account on the device is the admin, mirroring the SQL trigger.
       role: users.length === 0 ? 'admin' : 'member',
+      // Demo mode has no real security boundary — it's one browser's own
+      // storage — so there's no benefit to the account-approval gate here,
+      // only friction. Every demo account is approved immediately.
+      approved: true,
       lab_position: null,
       created_at: todayISO(),
       passwordHash: await hashPassword(password),
@@ -192,6 +196,14 @@ export const localDb = {
     users[idx] = { ...users[idx], ...patch }
     localDb.saveUsers(users)
     return stripHash(users[idx])
+  },
+
+  async setPassword(id: string, newPassword: string): Promise<void> {
+    const users = localDb.users()
+    const idx = users.findIndex((u) => u.id === id)
+    if (idx === -1) throw new Error('User not found')
+    users[idx] = { ...users[idx], passwordHash: await hashPassword(newPassword) }
+    localDb.saveUsers(users)
   },
 
   setRole(id: string, role: Role): Profile {

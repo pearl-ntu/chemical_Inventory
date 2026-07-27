@@ -38,7 +38,9 @@ This gives you:
 - `chemicals` — one row per physical container
 - `activity_log` — append-only audit trail
 - Row Level Security policies for the three access levels
-- A trigger that makes **the first account to sign up an admin**
+- A trigger that makes **the first account to sign up an admin, fully
+  approved**, and every account after that **unapproved** — invisible to the
+  inventory entirely — until an admin approves them from the Members page
 
 The file is safe to re-run if you need to.
 
@@ -147,17 +149,39 @@ and Settings shows the connected host — that is how you know it worked.
 
 ---
 
-## 8. Create the first account
+## 8. Create the admin account
 
-Sign up in the app — by email link or password, whichever you prefer.
-**The first account created becomes the admin**, so make it yours or the PI's,
-not a test address. If you do create a test account first, you can fix it in
-Supabase: **Table Editor → profiles →** change `role` to `admin` on the right
-row.
+**The first account ever created in the project automatically becomes admin**
+— everyone after that starts locked out (see below), so this one matters.
 
-From then on, invite the group by simply sending them the link. Everyone who
-signs up becomes a `member` — able to add and edit, but not delete. Promote or
-restrict people from the **Members** page.
+Two ways to set it up, pick whichever suits the group:
+
+- **Tied to a person** — sign up with the PI's or a senior member's own email.
+  Simple, but the account leaves when they do.
+- **A standing admin account, handed down over time** (recommended if you
+  want this to outlive any one person) — sign up once with a shared address
+  the group controls, e.g. `pearlntu2025@gmail.com`, and a password kept in
+  the group's password manager or handed to whoever's running things this
+  year. Nobody's personal name is on it, so admin duty passes along with the
+  password, not with a person leaving the group.
+
+If a test account accidentally became admin first, fix it in Supabase:
+**Table Editor → profiles →** set `role` to `admin` (and `approved` to `true`)
+on the right row.
+
+### Everyone else has to be let in — this is the real security gate
+
+Sign-up is open to any email address with no domain allow-list, **but signing
+up does not grant access.** Every account after the first lands unapproved:
+it exists, but Row Level Security means it cannot read a single row of the
+inventory yet — not "read-only", genuinely nothing. It shows a "waiting for
+approval" screen instead of the app.
+
+On the **Members** page, the admin account sees a **Waiting for approval**
+list at the top. Clicking **Approve** on someone does two things at once:
+flips them to visible, and sets them up as a `member` (able to add/edit).
+That's the whole flow — this is what actually stops "anyone can sign up and
+see the inventory," not the sign-up form itself.
 
 ---
 
@@ -202,7 +226,9 @@ future version needs new columns, it will come with a migration file in
 | "Invalid login credentials" | Wrong password, or email not confirmed | Use *Forgot password*, or turn off email confirmation (step 4). |
 | Sign-up succeeds, then "no profile could be loaded" | The trigger from step 2 did not run | Re-run `supabase/schema.sql`. |
 | "new row violates row-level security policy" | Your account is a `viewer` | An admin can promote you on the Members page. |
-| Nobody is an admin | The first sign-up predated the schema | Supabase → Table Editor → `profiles` → set `role` to `admin`. |
+| Nobody is an admin | The first sign-up predated the schema | Supabase → Table Editor → `profiles` → set `role` to `admin` and `approved` to `true`. |
+| Signed in but stuck on "Waiting for approval" | Expected — nobody but the first account is approved automatically | An existing admin approves you from the **Members** page. If there's no admin yet either, see the row above. |
+| Approved someone but they still see "Waiting for approval" | They're on a cached session | Have them hit **Check again** on that screen, or sign out and back in. |
 | Magic link redirects to an error page, or "redirect not allowed" | The app's URL isn't on the allow-list | Add it under **Authentication → URL Configuration** (step 6) — both the deployed URL and your `localhost` one. |
 | Clicking a magic link signs in on a different device than expected | Expected — the link itself carries the session | Open it on the device you actually want signed in; if you checked mail on your phone, forward the link or open it there. |
 | Magic link email never arrives | Supabase's default mailer is rate-limited (a few emails/hour) and often lands in spam | Check spam first. For anything beyond a handful of sign-ups, set a custom SMTP provider under **Authentication → Emails → SMTP Settings** — Supabase's default sender is meant for testing, not daily use by a whole lab. |

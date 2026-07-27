@@ -24,7 +24,8 @@ It ships pre-loaded with the group's real inventory as of **27 July 2026** —
 
 | | |
 |---|---|
-| 🔑 **Accounts for everyone** | Sign-up with email + password. Three access levels — admin, member, viewer — enforced by the database, not just the interface. |
+| 🔑 **Accounts for everyone** | Sign in with an email link or a password. Three access levels — admin, member, viewer — enforced by the database, not just the interface. |
+| ✅ **Approval gate** | Anyone can sign up, but nobody sees a single row of the inventory until an admin approves the account. Open sign-up, closed by default. |
 | 🔍 **Instant search** | Press `/` anywhere. Search by name, CAS, PEARL code, supplier, shelf, or remarks, all at once. |
 | 🧪 **One row per bottle** | Amount, pack size, purity, supplier, catalogue number, project, price, opened date, expiry. |
 | 🗺️ **Shelf map** | Every fridge and cabinet with its contents, grouped into cold storage / cabinets / flammables store. |
@@ -134,8 +135,13 @@ gimmick, and it is where to look first when something misbehaves.
 
 Permissions are enforced by PostgreSQL Row Level Security policies in
 `supabase/schema.sql`, not by hiding buttons. A viewer who opens the browser
-console still cannot write to the inventory. The first account created in a
-fresh database automatically becomes the admin.
+console still cannot write to the inventory, and — the part that actually
+matters on an open sign-up page — an unapproved account cannot read a single
+row of it either. The first account created in a fresh database automatically
+becomes the admin, fully approved. Every account after that starts locked
+out entirely (a "waiting for approval" screen, not a limited view) until an
+admin approves them from the Members page, which is the real gate here, not
+the sign-up form.
 
 ### A note on safety data
 

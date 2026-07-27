@@ -74,6 +74,13 @@ export interface Profile {
   email: string
   full_name: string
   role: Role
+  /**
+   * Whether an admin has let this account in at all. New sign-ups start
+   * `false` and can't see the inventory — not just "can't edit it" — until
+   * someone approves them. Distinct from `role`, which only governs what an
+   * already-approved account can do.
+   */
+  approved: boolean
   lab_position: string | null
   created_at: string
 }

@@ -11,6 +11,7 @@ import LabelsPage from './pages/LabelsPage'
 import LocationsPage from './pages/LocationsPage'
 import LoginPage from './pages/LoginPage'
 import MembersPage from './pages/MembersPage'
+import PendingApprovalPage from './pages/PendingApprovalPage'
 import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
@@ -25,6 +26,11 @@ export default function App() {
   }
 
   if (!profile) return <LoginPage />
+
+  // Signed in, but not let in yet — don't even mount the inventory shell:
+  // every query it would make is blocked by RLS anyway, so there's nothing
+  // useful to show except why.
+  if (!profile.approved) return <PendingApprovalPage />
 
   return (
     <InventoryProvider>

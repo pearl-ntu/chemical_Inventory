@@ -1,16 +1,16 @@
-import { useEffect, useState } from 'react'
-import { ShieldCheck, Users } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Check, ShieldCheck, UserPlus, Users } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
-import { EmptyState, LoadingScreen } from '../components/ui'
+import { EmptyState, LoadingScreen, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { api } from '../lib/api'
 import type { Profile, Role } from '../lib/types'
-import { formatDate } from '../lib/utils'
+import { formatDate, formatRelative } from '../lib/utils'
 
 const ROLE_HELP: Record<Role, string> = {
-  admin: 'Full control, including deleting records and changing what others can do.',
-  member: 'Can add, edit and mark containers empty. The right level for most people.',
+  admin: 'Full control: approving new accounts, deleting records, and changing what others can do.',
+  member: 'Can add, edit and mark containers empty. The right level for most people, once approved.',
   viewer: 'Read-only. Useful for visitors, collaborators and undergraduates.',
 }
 
@@ -29,6 +29,27 @@ export default function MembersPage() {
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Could not load members.'))
       .finally(() => setLoading(false))
   }, [toast])
+
+  const pending = useMemo(
+    () => members.filter((m) => !m.approved).sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    [members],
+  )
+  const approvedMembers = useMemo(() => members.filter((m) => m.approved), [members])
+
+  async function approve(target: Profile) {
+    setSaving(target.id)
+    try {
+      await api.approveAccount(target)
+      setMembers((prev) =>
+        prev.map((m) => (m.id === target.id ? { ...m, approved: true, role: target.role === 'viewer' ? 'member' : target.role } : m)),
+      )
+      toast.success(`${target.full_name} can now sign in.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not approve that account.')
+    } finally {
+      setSaving(null)
+    }
+  }
 
   async function changeRole(id: string, role: Role) {
     setSaving(id)
@@ -55,18 +76,50 @@ export default function MembersPage() {
 
   if (loading) return <LoadingScreen label="Loading members…" />
 
-  const adminCount = members.filter((m) => m.role === 'admin').length
+  const adminCount = approvedMembers.filter((m) => m.role === 'admin').length
 
   return (
     <>
       <PageHeader
         title="Members"
-        description="Everyone with an account, and what they are allowed to do."
+        description="Everyone with an account, and what they are allowed to do. Sign-up is open to any email — nobody sees the inventory until you approve them here."
       />
 
-      {members.length === 0 ? (
+      {/* pending approval ---------------------------------------------------- */}
+      {pending.length > 0 && (
+        <section className="card mb-4 border-amber-200 dark:border-amber-500/30">
+          <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-500/25 dark:bg-amber-500/10">
+            <UserPlus className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+            <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              Waiting for approval ({pending.length})
+            </h2>
+          </div>
+          <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+            {pending.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-ink-900 dark:text-ink-50">{m.full_name}</p>
+                  <p className="text-xs text-ink-500">
+                    {m.email} · signed up {formatRelative(m.created_at)}
+                  </p>
+                </div>
+                <button
+                  className="btn-primary py-1.5"
+                  disabled={saving === m.id}
+                  onClick={() => void approve(m)}
+                >
+                  {saving === m.id ? <Spinner /> : <Check className="h-4 w-4" />} Approve
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* approved members ----------------------------------------------------- */}
+      {approvedMembers.length === 0 ? (
         <div className="card">
-          <EmptyState icon={<Users className="h-6 w-6" />} title="No accounts yet" />
+          <EmptyState icon={<Users className="h-6 w-6" />} title="No approved accounts yet" />
         </div>
       ) : (
         <div className="card overflow-hidden">
@@ -82,7 +135,7 @@ export default function MembersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
-                {members.map((m) => {
+                {approvedMembers.map((m) => {
                   // Never let the last admin demote themselves out of the account.
                   const isLastAdmin = m.role === 'admin' && adminCount === 1
                   return (
@@ -139,8 +192,9 @@ export default function MembersPage() {
           ))}
         </dl>
         <p className="mt-4 text-xs text-ink-400">
-          These rules are enforced by the database itself, not just by the interface — a viewer
-          cannot write to the inventory even with the browser console open.
+          These rules are enforced by the database itself, not just by the interface — an
+          unapproved account cannot read a single row of the inventory even with the browser
+          console open, and a viewer cannot write to it.
         </p>
       </div>
     </>

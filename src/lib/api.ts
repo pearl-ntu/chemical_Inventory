@@ -57,12 +57,16 @@ export const auth = {
 
     // The sign-up trigger normally creates this row; if a project was set up
     // without it, fall back to a sensible profile rather than dead-ending.
+    // Safest possible defaults here — unapproved, read-only — since this
+    // path means something's actually wrong (the trigger didn't fire), not
+    // a normal state to grant access under.
     if (!data) {
       return {
         id: user.id,
         email: user.email ?? '',
         full_name: (user.user_metadata?.full_name as string) ?? user.email?.split('@')[0] ?? '',
-        role: 'member',
+        role: 'viewer',
+        approved: false,
         lab_position: null,
         created_at: user.created_at ?? new Date().toISOString(),
       }
@@ -166,6 +170,40 @@ export const auth = {
     const { error } = await requireSupabase().auth.resetPasswordForEmail(email.trim(), {
       redirectTo: window.location.origin + window.location.pathname,
     })
+    if (error) throw new ApiError(error.message)
+  },
+
+  /**
+   * Requires the current password before setting a new one — Supabase's
+   * `updateUser` alone would happily change it for anyone with an open
+   * session, which is exactly the case (a shared or unlocked computer) this
+   * check exists for. `currentPassword` is optional only because someone who
+   * signed up via magic link has never set one — there's nothing to verify,
+   * so this call sets their first password instead of changing one.
+   */
+  async changePassword(
+    email: string,
+    currentPassword: string | null,
+    newPassword: string,
+  ): Promise<void> {
+    if (!IS_CLOUD) {
+      // Demo mode is password-only (no magic link), so there's always an
+      // existing password to check here.
+      if (!currentPassword) throw new ApiError('Enter your current password.')
+      const profile = await localDb.verifyUser(email, currentPassword)
+      await localDb.setPassword(profile.id, newPassword)
+      return
+    }
+    const sb = requireSupabase()
+    if (currentPassword) {
+      const { error: verifyError } = await sb.auth.signInWithPassword({
+        email: email.trim(),
+        password: currentPassword,
+      })
+      if (verifyError) throw new ApiError('Current password is incorrect.')
+    }
+
+    const { error } = await sb.auth.updateUser({ password: newPassword })
     if (error) throw new ApiError(error.message)
   },
 
@@ -392,6 +430,25 @@ export const api = {
     }
     const { error } = await requireSupabase().from('profiles').update({ role }).eq('id', id)
     if (error) fail('Could not change that role', error)
+  },
+
+  /**
+   * Lets someone in: flips `approved` and, unless they're already something
+   * else, sets them up as a working `member` in the same step — matching
+   * what "approve this person" actually means to an admin, rather than
+   * requiring two separate clicks (approve, then remember to also promote).
+   */
+  async approveAccount(target: Profile): Promise<void> {
+    const role = target.role === 'viewer' ? 'member' : target.role
+    if (!IS_CLOUD) {
+      localDb.updateUser(target.id, { approved: true, role })
+      return
+    }
+    const { error } = await requireSupabase()
+      .from('profiles')
+      .update({ approved: true, role })
+      .eq('id', target.id)
+    if (error) fail('Could not approve that account', error)
   },
 
   /** Live updates so two people at two benches see the same shelf. */
