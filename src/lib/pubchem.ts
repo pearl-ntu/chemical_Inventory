@@ -62,41 +62,79 @@ export async function lookup(cas: string | null, name: string | null): Promise<P
 
   for (const term of candidates) {
     try {
-      const url =
-        `${BASE}/compound/name/${encodeURIComponent(term)}` +
-        `/property/MolecularFormula,MolecularWeight,IUPACName,CanonicalSMILES/JSON`
-      const res = await fetch(url, { headers: { Accept: 'application/json' } })
-      if (!res.ok) continue
-
-      const json = (await res.json()) as {
-        PropertyTable?: {
-          Properties?: Array<{
-            CID: number
-            MolecularFormula?: string
-            MolecularWeight?: string | number
-            IUPACName?: string
-            CanonicalSMILES?: string
-          }>
-        }
+      const info = await fetchProperties(`compound/name/${encodeURIComponent(term)}`)
+      if (info) {
+        result = info
+        break
       }
-
-      const p = json.PropertyTable?.Properties?.[0]
-      if (!p) continue
-
-      const mw = p.MolecularWeight == null ? null : Number(p.MolecularWeight)
-      result = {
-        cid: p.CID,
-        formula: p.MolecularFormula ?? null,
-        molecularWeight: Number.isFinite(mw as number) ? (mw as number) : null,
-        iupacName: p.IUPACName ?? null,
-        smiles: p.CanonicalSMILES ?? null,
-        imageUrl: structureImageUrl(p.CID),
-        pageUrl: pubchemPageUrl(p.CID),
-      }
-      break
     } catch {
       // Offline, blocked, or rate-limited — fall through to the next candidate.
     }
+  }
+
+  cache[key] = { at: Date.now(), value: result }
+  writeCache(cache)
+  return result
+}
+
+interface PubChemProperties {
+  CID: number
+  MolecularFormula?: string
+  MolecularWeight?: string | number
+  IUPACName?: string
+  // PubChem renamed this response key from CanonicalSMILES a while back —
+  // the old name still works as a *request* parameter (silently ignored) but
+  // the response always comes back under this key now. Reading the old name
+  // here would just silently return null forever, which is exactly what this
+  // code did until it was caught.
+  ConnectivitySMILES?: string
+}
+
+async function fetchProperties(pathPrefix: string): Promise<PubChemInfo | null> {
+  const url = `${BASE}/${pathPrefix}/property/MolecularFormula,MolecularWeight,IUPACName,ConnectivitySMILES/JSON`
+  const res = await fetch(url, { headers: { Accept: 'application/json' } })
+  if (!res.ok) return null
+
+  const json = (await res.json()) as {
+    PropertyTable?: { Properties?: PubChemProperties[] }
+  }
+  const p = json.PropertyTable?.Properties?.[0]
+  if (!p) return null
+
+  const mw = p.MolecularWeight == null ? null : Number(p.MolecularWeight)
+  return {
+    cid: p.CID,
+    formula: p.MolecularFormula ?? null,
+    molecularWeight: Number.isFinite(mw as number) ? (mw as number) : null,
+    iupacName: p.IUPACName ?? null,
+    smiles: p.ConnectivitySMILES ?? null,
+    imageUrl: structureImageUrl(p.CID),
+    pageUrl: pubchemPageUrl(p.CID),
+  }
+}
+
+/**
+ * Looks a compound up by an exact SMILES match — used to check "is what I
+ * just drew actually a known, purchasable compound" before ordering it as
+ * custom synthesis. This is an exact-structure match (after PubChem's own
+ * canonicalisation), not a fuzzy/similarity search: a different tautomer or
+ * stereoisomer won't match, which is the right default — a near-miss here
+ * would be actively misleading ("PubChem has this" when it doesn't, quite).
+ */
+export async function lookupBySmiles(smiles: string): Promise<PubChemInfo | null> {
+  const trimmed = smiles.trim()
+  if (!trimmed) return null
+
+  const key = `smiles:${trimmed}`
+  const cache = readCache()
+  const hit = cache[key]
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value
+
+  let result: PubChemInfo | null = null
+  try {
+    result = await fetchProperties(`compound/smiles/${encodeURIComponent(trimmed)}`)
+  } catch {
+    // Offline, blocked, or rate-limited — caller sees "no match", not an error.
   }
 
   cache[key] = { at: Date.now(), value: result }

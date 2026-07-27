@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Printer, QrCode } from 'lucide-react'
+import { LazyMolfileSvgRenderer } from '../components/LazyStructure'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen, MultiSelect, SearchInput } from '../components/ui'
 import { useInventory } from '../context/InventoryContext'
@@ -158,6 +159,13 @@ function LabelCell({ chemical, qr }: { chemical: Chemical; qr?: string }) {
           <div className="h-full w-full animate-pulse rounded bg-ink-100" />
         )}
       </div>
+      {chemical.structure_molfile && (
+        <div className="viz-root flex h-[72px] w-[54px] shrink-0 items-center justify-center overflow-hidden rounded border border-ink-100 bg-white">
+          <Suspense fallback={null}>
+            <LazyMolfileSvgRenderer molfile={chemical.structure_molfile} width={52} height={70} />
+          </Suspense>
+        </div>
+      )}
       <div className="min-w-0 flex-1 text-ink-900">
         <p className="truncate text-[13px] font-bold leading-tight">{chemical.name}</p>
         <p className="mt-0.5 font-mono text-[10px] text-ink-500">{chemical.code}</p>

@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useState } from 'react'
 import {
+  Beaker,
   Building2,
   CalendarDays,
   CircleSlash,
@@ -20,7 +21,7 @@ import { qrDataUrl } from '../lib/qr'
 import { STATUS_LABEL, type Chemical } from '../lib/types'
 import { cx, formatDate, formatSize, statusTone } from '../lib/utils'
 import { HazardBadges } from './HazardBadges'
-import { LazyMolfileSvgRenderer } from './LazyStructure'
+import { LazyMolfileSvgRenderer, LazyReactionViewer } from './LazyStructure'
 import { ConfirmDialog, Drawer, Spinner } from './ui'
 
 function Row({
@@ -272,6 +273,20 @@ export function ChemicalDrawer({
               </span>
             </Row>
           </div>
+
+          {/* synthesis scheme ---------------------------------------------- */}
+          {c.reaction_rxnfile && (
+            <div className="card p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-400">
+                <Beaker className="h-3.5 w-3.5" /> Synthesis scheme
+              </p>
+              <div className="viz-root flex min-h-[140px] items-center justify-center overflow-hidden rounded bg-white p-2">
+                <Suspense fallback={<Spinner className="h-5 w-5 text-ink-300" />}>
+                  <LazyReactionViewer rxnfile={c.reaction_rxnfile} />
+                </Suspense>
+              </div>
+            </div>
+          )}
 
           {/* external ----------------------------------------------------- */}
           <div className="flex flex-wrap gap-2">

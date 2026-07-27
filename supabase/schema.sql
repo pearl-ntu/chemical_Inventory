@@ -90,6 +90,11 @@ create table if not exists public.chemicals (
 -- one, and that's fine.
 alter table public.chemicals add column if not exists structure_molfile text;
 
+-- An optional drawn synthesis scheme (reactants/reagents/products), stored as
+-- an RXN-format file — same idea as structure_molfile, for a reaction instead
+-- of a single molecule. Nullable; most entries won't have one.
+alter table public.chemicals add column if not exists reaction_rxnfile text;
+
 create index if not exists chemicals_name_idx       on public.chemicals (lower(name));
 create index if not exists chemicals_cas_idx        on public.chemicals (cas);
 create index if not exists chemicals_location_idx   on public.chemicals (location);

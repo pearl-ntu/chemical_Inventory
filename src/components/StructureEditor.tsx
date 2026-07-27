@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
-import { Eraser } from 'lucide-react'
+import { CheckCircle2, Eraser, ExternalLink, HelpCircle, Search } from 'lucide-react'
 import { CanvasMoleculeEditor, type CanvasEditorOnChangeMolecule } from 'react-ocl'
-import { Modal } from './ui'
+import * as pubchem from '../lib/pubchem'
+import { Modal, Spinner } from './ui'
 
 export interface DrawnStructure {
   molfile: string
@@ -10,6 +11,12 @@ export interface DrawnStructure {
   formula: string
   molWeight: number
 }
+
+type PubChemSearchState =
+  | { status: 'idle' }
+  | { status: 'searching' }
+  | { status: 'found'; info: pubchem.PubChemInfo }
+  | { status: 'not-found' }
 
 /**
  * A real 2D structure editor, not a toy — atoms, bond orders, ring templates,
@@ -35,6 +42,7 @@ export function StructureEditorDialog({
   const latestChange = useRef<CanvasEditorOnChangeMolecule | null>(null)
   const [hasContent, setHasContent] = useState(Boolean(initialMolfile))
   const [resetKey, setResetKey] = useState(0)
+  const [search, setSearch] = useState<PubChemSearchState>({ status: 'idle' })
 
   function handleConfirm() {
     const change = latestChange.current
@@ -47,6 +55,18 @@ export function StructureEditorDialog({
       formula: formulaInfo.formula,
       molWeight: Math.round(formulaInfo.relativeWeight * 100) / 100,
     })
+  }
+
+  async function searchPubChem() {
+    const smiles = latestChange.current?.getSmiles()
+    if (!smiles) return
+    setSearch({ status: 'searching' })
+    try {
+      const info = await pubchem.lookupBySmiles(smiles)
+      setSearch(info ? { status: 'found', info } : { status: 'not-found' })
+    } catch {
+      setSearch({ status: 'not-found' })
+    }
   }
 
   return (
@@ -64,10 +84,21 @@ export function StructureEditorDialog({
             onClick={() => {
               latestChange.current = null
               setHasContent(false)
+              setSearch({ status: 'idle' })
               setResetKey((k) => k + 1)
             }}
           >
             <Eraser className="h-4 w-4" /> Clear
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void searchPubChem()}
+            disabled={!hasContent || search.status === 'searching'}
+            title="Check whether this exact structure is a known compound on PubChem"
+          >
+            {search.status === 'searching' ? <Spinner /> : <Search className="h-4 w-4" />}
+            Search PubChem
           </button>
           <button className="btn-secondary" onClick={onClose}>
             Cancel
@@ -78,18 +109,60 @@ export function StructureEditorDialog({
         </>
       }
     >
-      <div className="h-[60vh] min-h-[420px] w-full overflow-hidden rounded-lg border border-ink-200 bg-white dark:border-ink-700">
-        <CanvasMoleculeEditor
-          key={resetKey}
-          width="100%"
-          height="100%"
-          inputFormat={initialMolfile ? 'molfile' : undefined}
-          inputValue={resetKey === 0 ? (initialMolfile ?? undefined) : undefined}
-          onChange={(change) => {
-            latestChange.current = change
-            setHasContent(change.getMolfileV3().trim().length > 0)
-          }}
-        />
+      <div className="space-y-3">
+        <div className="h-[55vh] min-h-[380px] w-full overflow-hidden rounded-lg border border-ink-200 bg-white dark:border-ink-700">
+          <CanvasMoleculeEditor
+            key={resetKey}
+            width="100%"
+            height="100%"
+            inputFormat={initialMolfile ? 'molfile' : undefined}
+            inputValue={resetKey === 0 ? (initialMolfile ?? undefined) : undefined}
+            onChange={(change) => {
+              latestChange.current = change
+              setHasContent(change.getMolfileV3().trim().length > 0)
+              // A new edit invalidates whatever the last search found.
+              setSearch({ status: 'idle' })
+            }}
+          />
+        </div>
+
+        {search.status === 'found' && (
+          <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="font-semibold text-emerald-900 dark:text-emerald-100">
+                Known compound — PubChem CID {search.info.cid}
+              </p>
+              <p className="mt-0.5 text-emerald-800/80 dark:text-emerald-200/70">
+                {search.info.iupacName ?? 'No IUPAC name on file'} · {search.info.formula ?? '—'}
+                {search.info.molecularWeight != null && ` · ${search.info.molecularWeight.toFixed(2)} g/mol`}
+              </p>
+              <p className="mt-1 text-xs text-emerald-700/70 dark:text-emerald-300/60">
+                Worth checking if it's available to simply order, before registering this as a
+                custom-synthesis product.
+              </p>
+            </div>
+            <a
+              href={search.info.pageUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="btn-secondary shrink-0 py-1.5 text-xs"
+            >
+              View <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        )}
+
+        {search.status === 'not-found' && (
+          <div className="flex items-start gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3 dark:border-ink-700 dark:bg-ink-800/50">
+            <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
+            <p className="text-sm text-ink-600 dark:text-ink-300">
+              No exact match on PubChem — this looks like it'd need custom synthesis, or PubChem
+              simply doesn't have it catalogued. (This checks for an exact structure match, not a
+              similar one, so a different tautomer or stereoisomer won't match either.)
+            </p>
+          </div>
+        )}
       </div>
     </Modal>
   )

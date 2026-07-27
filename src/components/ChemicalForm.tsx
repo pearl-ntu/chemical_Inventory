@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { PenTool, Sparkles, TriangleAlert, X } from 'lucide-react'
+import { Beaker, PenTool, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
 import { hazardHint } from '../lib/hazardHints'
@@ -7,8 +7,52 @@ import * as pubchem from '../lib/pubchem'
 import { HAZARDS, SIZE_UNITS, STATUSES, STATUS_LABEL, type Chemical, type ChemicalInput } from '../lib/types'
 import { cx, todayISO, uniqueSorted, validateCAS } from '../lib/utils'
 import { Field, Modal, Spinner } from './ui'
-import { LazyMolfileSvgRenderer, LazyStructureEditorDialog } from './LazyStructure'
+import {
+  LazyMolfileSvgRenderer,
+  LazyReactionEditorDialog,
+  LazyReactionViewer,
+  LazyStructureEditorDialog,
+} from './LazyStructure'
 import { useAuth } from '../context/AuthContext'
+
+/**
+ * Two structures are "the same compound" if OpenChemLib's canonical idcode
+ * matches — catches a real duplicate that the text-based CAS/name check
+ * below would miss (different supplier listing, a salt vs. free base typed
+ * differently, a typo in the name). Loaded on demand, same as the editor
+ * itself, and only when there's actually a structure to compare.
+ */
+async function findStructuralDuplicate(
+  molfile: string,
+  candidates: Chemical[],
+): Promise<Chemical | null> {
+  if (candidates.length === 0) return null
+  const mod = await import('openchemlib')
+  // Interop shim: bundlers disagree on whether this ships as a default
+  // export or named exports, so accept either rather than guessing once.
+  const shimmed = mod as unknown as {
+    Molecule?: typeof mod.Molecule
+    default?: { Molecule: typeof mod.Molecule }
+  }
+  const Molecule = shimmed.Molecule ?? shimmed.default?.Molecule
+  if (!Molecule) return null
+
+  let targetIdcode: string
+  try {
+    targetIdcode = Molecule.fromMolfile(molfile).getIDCode()
+  } catch {
+    return null
+  }
+  for (const c of candidates) {
+    if (!c.structure_molfile) continue
+    try {
+      if (Molecule.fromMolfile(c.structure_molfile).getIDCode() === targetIdcode) return c
+    } catch {
+      // A malformed stored molfile shouldn't block registering a new one.
+    }
+  }
+  return null
+}
 
 function blank(defaults: Partial<ChemicalInput>, registeredBy: string): ChemicalInput {
   return {
@@ -22,6 +66,7 @@ function blank(defaults: Partial<ChemicalInput>, registeredBy: string): Chemical
     formula: null,
     mol_weight: null,
     structure_molfile: null,
+    reaction_rxnfile: null,
     purity: null,
     quantity: 1,
     size_value: null,
@@ -62,6 +107,8 @@ export function ChemicalForm({
   const [looking, setLooking] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [drawOpen, setDrawOpen] = useState(false)
+  const [reactionOpen, setReactionOpen] = useState(false)
+  const [structuralDuplicate, setStructuralDuplicate] = useState<Chemical | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -87,6 +134,21 @@ export function ChemicalForm({
           (!form.cas && c.name.trim().toLowerCase() === form.name.trim().toLowerCase())),
     )
   }, [chemicals, form.cas, form.name, editing])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!form.structure_molfile) {
+      setStructuralDuplicate(null)
+      return
+    }
+    const candidates = chemicals.filter((c) => c.id !== editing?.id && c.status !== 'empty')
+    void findStructuralDuplicate(form.structure_molfile, candidates).then((match) => {
+      if (!cancelled) setStructuralDuplicate(match)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [form.structure_molfile, chemicals, editing])
 
   const hint = useMemo(() => hazardHint(form.cas, form.name), [form.cas, form.name])
   const missingHints = hint ? hint.hazards.filter((h) => !form.hazards.includes(h)) : []
@@ -265,6 +327,19 @@ export function ChemicalForm({
                 The lab already holds <strong>{duplicate.name}</strong> ({duplicate.code}) in{' '}
                 {duplicate.location ?? 'an unrecorded location'}. Check before ordering more — or
                 carry on if this really is a second bottle.
+              </p>
+            </div>
+          )}
+
+          {structuralDuplicate && structuralDuplicate.id !== duplicate?.id && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p className="leading-snug text-amber-900 dark:text-amber-200">
+                This is the same molecule (by structure) as{' '}
+                <strong>{structuralDuplicate.name}</strong> ({structuralDuplicate.code}) in{' '}
+                {structuralDuplicate.location ?? 'an unrecorded location'} — different name or CAS
+                entry, but the drawn structure matches exactly. Worth checking it's not the same
+                bottle recorded twice under two names.
               </p>
             </div>
           )}
@@ -563,6 +638,40 @@ export function ChemicalForm({
               placeholder="1.0 M in toluene · nearly finished · keep under argon"
             />
           </Field>
+
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-ink-500">
+              If this was made in-house, attach the synthesis scheme that produced it.
+            </p>
+            <button
+              type="button"
+              className="btn-secondary shrink-0"
+              onClick={() => setReactionOpen(true)}
+              title="Draw the reaction that produced this compound"
+            >
+              <Beaker className="h-4 w-4" />
+              {form.reaction_rxnfile ? 'Edit synthesis scheme' : 'Draw synthesis scheme'}
+            </button>
+          </div>
+
+          {form.reaction_rxnfile && (
+            <div className="flex items-center gap-3 rounded-lg border border-ink-200 bg-white p-2 dark:border-ink-700 dark:bg-ink-950">
+              <div className="viz-root flex h-20 w-40 shrink-0 items-center justify-center overflow-hidden rounded bg-white">
+                <Suspense fallback={<Spinner className="h-4 w-4 text-ink-300" />}>
+                  <LazyReactionViewer rxnfile={form.reaction_rxnfile} />
+                </Suspense>
+              </div>
+              <p className="flex-1 text-xs text-ink-500">Synthesis scheme attached.</p>
+              <button
+                type="button"
+                className="btn-ghost p-1.5 text-ink-400 hover:text-rose-600"
+                onClick={() => set('reaction_rxnfile', null)}
+                title="Remove the attached scheme"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </section>
       </div>
 
@@ -590,6 +699,30 @@ export function ChemicalForm({
               }))
               setDrawOpen(false)
               toast.success('Structure attached — formula and molar mass filled in from it.')
+            }}
+          />
+        </Suspense>
+      )}
+
+      {reactionOpen && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 backdrop-blur-sm">
+              <div className="flex items-center gap-3 rounded-xl bg-white px-5 py-4 shadow-pop dark:bg-ink-900">
+                <Spinner className="h-5 w-5 text-pearl-600" />
+                <span className="text-sm text-ink-600 dark:text-ink-300">Loading the reaction editor…</span>
+              </div>
+            </div>
+          }
+        >
+          <LazyReactionEditorDialog
+            open={reactionOpen}
+            onClose={() => setReactionOpen(false)}
+            initialRxnfile={form.reaction_rxnfile}
+            onConfirm={(rxnfile) => {
+              setForm((f) => ({ ...f, reaction_rxnfile: rxnfile }))
+              setReactionOpen(false)
+              toast.success('Synthesis scheme attached.')
             }}
           />
         </Suspense>

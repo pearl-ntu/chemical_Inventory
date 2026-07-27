@@ -67,6 +67,7 @@ function seedChemicals(): Chemical[] {
     formula: null,
     mol_weight: null,
     structure_molfile: null,
+    reaction_rxnfile: null,
     purity: null,
     quantity: r.quantity,
     size_value: r.size_value,

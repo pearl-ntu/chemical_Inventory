@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   ArrowDownUp,
@@ -15,6 +15,7 @@ import { ChemicalForm } from '../components/ChemicalForm'
 import { HazardBadges } from '../components/HazardBadges'
 import { ImportDialog } from '../components/ImportDialog'
 import { PageHeader } from '../components/Layout'
+import { LazyMolfileSvgRenderer } from '../components/LazyStructure'
 import { ConfirmDialog, EmptyState, LoadingScreen, MultiSelect, SearchInput } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
@@ -333,6 +334,7 @@ export default function InventoryPage() {
                       }}
                     />
                   </th>
+                  <th className="th w-14" aria-hidden="true" />
                   {(
                     [
                       ['name', 'Chemical'],
@@ -380,6 +382,17 @@ export default function InventoryPage() {
                         checked={selected.has(c.id)}
                         onChange={() => toggleSelect(c.id)}
                       />
+                    </td>
+                    <td className="td">
+                      {c.structure_molfile ? (
+                        <div className="viz-root flex h-9 w-12 items-center justify-center overflow-hidden rounded bg-white ring-1 ring-ink-200 dark:ring-ink-700">
+                          <Suspense fallback={null}>
+                            <LazyMolfileSvgRenderer molfile={c.structure_molfile} width={48} height={36} />
+                          </Suspense>
+                        </div>
+                      ) : (
+                        <div className="h-9 w-12 rounded bg-ink-50 dark:bg-ink-800/50" />
+                      )}
                     </td>
                     <td className="td max-w-[22rem]">
                       <div className="truncate font-medium text-ink-900 dark:text-ink-50">

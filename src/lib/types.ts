@@ -41,6 +41,8 @@ export interface Chemical {
   mol_weight: number | null
   /** MDL Molfile (V3000) from the built-in 2D structure editor — null if never drawn. */
   structure_molfile: string | null
+  /** An optional drawn synthesis scheme (RXN format) — null if never drawn. */
+  reaction_rxnfile: string | null
   purity: string | null
   quantity: number
   size_value: number | null
