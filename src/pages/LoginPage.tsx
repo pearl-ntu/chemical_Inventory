@@ -155,9 +155,7 @@ export default function LoginPage() {
         />
 
         <div className="relative flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-sm font-black tracking-tight text-white">
-            P
-          </span>
+          <Logo className="h-9 w-9" />
           <div>
             <div className="text-lg font-extrabold tracking-tight text-white">PEARL</div>
             <div className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-white/50">
