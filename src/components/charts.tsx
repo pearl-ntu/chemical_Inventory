@@ -112,7 +112,12 @@ export function Donut({
   let offset = 0
 
   return (
-    <div className="viz-root flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-6">
+    // Deliberately always stacked, never side-by-side: this lives in a grid
+    // column whose width depends on the grid, not the viewport — a `sm:`
+    // breakpoint switching to a row doesn't know the column may still only be
+    // ~230px wide well past that breakpoint, which is exactly what pushed the
+    // legend text out past the card edge.
+    <div className="viz-root flex flex-col items-center gap-5">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={centerLabel}>
           <circle
@@ -178,7 +183,7 @@ export function Donut({
                 style={{ background: d.color ?? 'var(--viz-series)' }}
                 aria-hidden
               />
-              <span className="flex-1 truncate text-sm text-ink-600 dark:text-ink-300">
+              <span className="min-w-0 flex-1 truncate text-sm text-ink-600 dark:text-ink-300">
                 {d.label}
               </span>
               <span className="text-sm font-semibold tabular-nums text-ink-800 dark:text-ink-100">

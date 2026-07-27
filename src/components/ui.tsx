@@ -375,7 +375,7 @@ export function MultiSelect({
                   >
                     {on && <Check className="h-3 w-3" strokeWidth={3} />}
                   </span>
-                  <span className="flex-1 truncate text-ink-700 dark:text-ink-200">{o}</span>
+                  <span className="min-w-0 flex-1 truncate text-ink-700 dark:text-ink-200">{o}</span>
                   {counts?.[o] != null && (
                     <span className="text-xs tabular-nums text-ink-400">{counts[o]}</span>
                   )}

@@ -312,13 +312,13 @@ export default function DashboardPage() {
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-ink-50 dark:hover:bg-ink-800"
                       onClick={() => setDetail(group[0])}
                     >
-                      <span className="flex-1 truncate text-sm text-ink-800 dark:text-ink-100">
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink-800 dark:text-ink-100">
                         {group[0].name}
                       </span>
-                      <span className="badge bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/20">
+                      <span className="shrink-0 badge bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/20">
                         {group.length} bottles
                       </span>
-                      <span className="hidden text-xs text-ink-400 sm:block">
+                      <span className="hidden shrink-0 max-w-[8rem] truncate text-xs text-ink-400 sm:block">
                         {[...new Set(group.map((g) => g.location ?? '—'))].join(', ')}
                       </span>
                     </button>
@@ -346,9 +346,11 @@ export default function DashboardPage() {
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-ink-50 dark:hover:bg-ink-800"
                       onClick={() => setDetail(c)}
                     >
-                      <span className="flex-1 truncate text-sm">{c.name}</span>
-                      <span className="text-xs text-ink-400">{c.location}</span>
-                      <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                      <span className="min-w-0 flex-1 truncate text-sm">{c.name}</span>
+                      <span className="hidden shrink-0 max-w-[6rem] truncate text-xs text-ink-400 sm:block">
+                        {c.location}
+                      </span>
+                      <span className="shrink-0 text-xs font-semibold text-rose-600 dark:text-rose-400">
                         {c.expiry_date}
                       </span>
                     </button>
