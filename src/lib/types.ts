@@ -93,6 +93,8 @@ export type ActivityAction =
   | 'restocked'
   | 'imported'
   | 'signed_up'
+  | 'invited'
+  | 'role_changed'
 
 export interface ActivityEntry {
   id: string

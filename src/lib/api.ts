@@ -155,6 +155,32 @@ export const auth = {
     if (error) throw new ApiError(error.message)
   },
 
+  /**
+   * An admin inviting someone by email — same mechanism as the sign-up
+   * page's magic link, just triggered from the Members page instead of
+   * waiting for the person to find the app themselves. There's no way to
+   * create their account for them without the service_role key, which must
+   * never touch the frontend, so this is the email-and-they-click-it flow
+   * either way: the account (and its "waiting for approval" state) only
+   * really exists once they open the link.
+   */
+  async inviteMember(email: string, fullName: string): Promise<void> {
+    if (!IS_CLOUD) {
+      throw new ApiError(
+        'Invites aren’t needed in demo mode — anyone can sign up directly from the login page.',
+      )
+    }
+    const { error } = await requireSupabase().auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        emailRedirectTo: redirectUrl(),
+        shouldCreateUser: true,
+        data: fullName.trim() ? { full_name: fullName.trim() } : undefined,
+      },
+    })
+    if (error) throw new ApiError(error.message)
+  },
+
   async signOut(): Promise<void> {
     if (!IS_CLOUD) {
       localDb.setSession(null)
@@ -423,13 +449,16 @@ export const api = {
     return (data ?? []) as Profile[]
   },
 
-  async setRole(id: string, role: Role): Promise<void> {
+  async setRole(target: Profile, role: Role, actor: Profile): Promise<void> {
+    const details = `${target.full_name}'s access set to ${role}`
     if (!IS_CLOUD) {
-      localDb.setRole(id, role)
+      localDb.setRole(target.id, role)
+      logLocal(null, 'role_changed', details, actor)
       return
     }
-    const { error } = await requireSupabase().from('profiles').update({ role }).eq('id', id)
+    const { error } = await requireSupabase().from('profiles').update({ role }).eq('id', target.id)
     if (error) fail('Could not change that role', error)
+    await api.log(null, 'role_changed', details, actor)
   },
 
   /**
@@ -438,10 +467,12 @@ export const api = {
    * what "approve this person" actually means to an admin, rather than
    * requiring two separate clicks (approve, then remember to also promote).
    */
-  async approveAccount(target: Profile): Promise<void> {
+  async approveAccount(target: Profile, actor: Profile): Promise<void> {
     const role = target.role === 'viewer' ? 'member' : target.role
+    const details = `${target.full_name} approved as ${role}`
     if (!IS_CLOUD) {
       localDb.updateUser(target.id, { approved: true, role })
+      logLocal(null, 'role_changed', details, actor)
       return
     }
     const { error } = await requireSupabase()
@@ -449,6 +480,7 @@ export const api = {
       .update({ approved: true, role })
       .eq('id', target.id)
     if (error) fail('Could not approve that account', error)
+    await api.log(null, 'role_changed', details, actor)
   },
 
   /** Live updates so two people at two benches see the same shelf. */

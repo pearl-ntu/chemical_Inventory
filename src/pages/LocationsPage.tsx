@@ -19,7 +19,10 @@ export default function LocationsPage() {
   const { chemicals, loading } = useInventory()
   const [q, setQ] = useState('')
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const [detail, setDetail] = useState<Chemical | null>(null)
+  // Tracked by id and derived live so the drawer never freezes on a
+  // pre-mutation snapshot (e.g. right after "Mark empty").
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const detail = useMemo(() => chemicals.find((c) => c.id === detailId) ?? null, [chemicals, detailId])
 
   const groups = useMemo(() => {
     const rows = chemicals.filter((c) => c.status !== 'empty' && c.status !== 'disposed')
@@ -127,7 +130,7 @@ export default function LocationsPage() {
                           {shown.map((c) => (
                             <li key={c.id}>
                               <button
-                                onClick={() => setDetail(c)}
+                                onClick={() => setDetailId(c.id)}
                                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-ink-50 dark:hover:bg-ink-800"
                               >
                                 <span className="min-w-0 flex-1">
@@ -177,7 +180,7 @@ export default function LocationsPage() {
         </div>
       )}
 
-      <ChemicalDrawer chemical={detail} onClose={() => setDetail(null)} onEdit={() => setDetail(null)} />
+      <ChemicalDrawer chemical={detail} onClose={() => setDetailId(null)} onEdit={() => setDetailId(null)} />
     </>
   )
 }

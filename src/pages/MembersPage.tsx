@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Check, ShieldCheck, UserPlus, Users } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Check, Mail, ShieldCheck, UserPlus, Users } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
-import { EmptyState, LoadingScreen, Spinner } from '../components/ui'
+import { EmptyState, Field, LoadingScreen, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
-import { api } from '../lib/api'
+import { auth, api } from '../lib/api'
+import { MODE } from '../lib/config'
 import type { Profile, Role } from '../lib/types'
 import { formatDate, formatRelative } from '../lib/utils'
 
@@ -22,6 +23,10 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
 
+  const [inviteName, setInviteName] = useState('')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+
   useEffect(() => {
     api
       .listProfiles()
@@ -36,10 +41,40 @@ export default function MembersPage() {
   )
   const approvedMembers = useMemo(() => members.filter((m) => m.approved), [members])
 
+  async function sendInvite(e: FormEvent) {
+    e.preventDefault()
+    if (!profile) return
+    if (!inviteEmail.trim()) return toast.error('Enter an email address to invite.')
+    if (members.some((m) => m.email.toLowerCase() === inviteEmail.trim().toLowerCase())) {
+      return toast.error('That email already has an account — approve it below instead.')
+    }
+
+    setInviting(true)
+    try {
+      await auth.inviteMember(inviteEmail, inviteName)
+      await api.log(
+        null,
+        'invited',
+        `Invited ${inviteName.trim() || inviteEmail.trim()} (${inviteEmail.trim()})`,
+        profile,
+      )
+      toast.success(
+        `Invite sent to ${inviteEmail}. They'll show up below, waiting for approval, once they open the link.`,
+      )
+      setInviteName('')
+      setInviteEmail('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not send that invite.')
+    } finally {
+      setInviting(false)
+    }
+  }
+
   async function approve(target: Profile) {
+    if (!profile) return
     setSaving(target.id)
     try {
-      await api.approveAccount(target)
+      await api.approveAccount(target, profile)
       setMembers((prev) =>
         prev.map((m) => (m.id === target.id ? { ...m, approved: true, role: target.role === 'viewer' ? 'member' : target.role } : m)),
       )
@@ -51,11 +86,12 @@ export default function MembersPage() {
     }
   }
 
-  async function changeRole(id: string, role: Role) {
-    setSaving(id)
+  async function changeRole(target: Profile, role: Role) {
+    if (!profile) return
+    setSaving(target.id)
     try {
-      await api.setRole(id, role)
-      setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, role } : m)))
+      await api.setRole(target, role, profile)
+      setMembers((prev) => prev.map((m) => (m.id === target.id ? { ...m, role } : m)))
       toast.success('Access level updated.')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not change that role.')
@@ -84,6 +120,46 @@ export default function MembersPage() {
         title="Members"
         description="Everyone with an account, and what they are allowed to do. Sign-up is open to any email — nobody sees the inventory until you approve them here."
       />
+
+      {/* invite ---------------------------------------------------------------- */}
+      <section className="card mb-4 p-4">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-ink-800 dark:text-ink-100">
+          <Mail className="h-4 w-4 text-pearl-600" /> Invite someone
+        </h2>
+        <p className="mb-3 text-xs text-ink-500 dark:text-ink-400">
+          {MODE === 'cloud'
+            ? 'Sends a one-click sign-in link. They still have to open it to actually create the account — there\'s no way around that without your admin, no password to hand them — but it saves them finding the app themselves.'
+            : 'Demo mode has no email to send — anyone can just sign up directly from the login page instead.'}
+        </p>
+        <form onSubmit={(e) => void sendInvite(e)} className="flex flex-wrap items-end gap-2">
+          <div className="w-full sm:w-48">
+            <Field label="Name">
+              <input
+                className="input"
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                placeholder="Dr. Takuya Tanaka"
+                disabled={MODE !== 'cloud'}
+              />
+            </Field>
+          </div>
+          <div className="w-full flex-1 sm:w-auto">
+            <Field label="Email">
+              <input
+                className="input"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="them@e.ntu.edu.sg"
+                disabled={MODE !== 'cloud'}
+              />
+            </Field>
+          </div>
+          <button className="btn-primary" disabled={inviting || MODE !== 'cloud'}>
+            {inviting ? <Spinner /> : <UserPlus className="h-4 w-4" />} Send invite
+          </button>
+        </form>
+      </section>
 
       {/* pending approval ---------------------------------------------------- */}
       {pending.length > 0 && (
@@ -161,7 +237,7 @@ export default function MembersPage() {
                               ? 'This is the only admin — promote someone else first.'
                               : ROLE_HELP[m.role]
                           }
-                          onChange={(e) => void changeRole(m.id, e.target.value as Role)}
+                          onChange={(e) => void changeRole(m, e.target.value as Role)}
                         >
                           <option value="admin">Admin</option>
                           <option value="member">Member</option>

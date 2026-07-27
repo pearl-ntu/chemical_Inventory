@@ -43,6 +43,8 @@ const ACTIVITY_ICON: Record<ActivityAction, typeof Pencil> = {
   restocked: Check,
   imported: Upload,
   signed_up: Sparkles,
+  invited: Sparkles,
+  role_changed: ShieldAlert,
 }
 
 export default function DashboardPage() {
@@ -52,7 +54,10 @@ export default function DashboardPage() {
   const navigate = useNavigate()
 
   const [recent, setRecent] = useState<ActivityEntry[]>([])
-  const [detail, setDetail] = useState<Chemical | null>(null)
+  // Tracked by id and derived live (see InventoryPage for why) so the drawer
+  // never freezes on a pre-mutation snapshot.
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const detail = useMemo(() => chemicals.find((c) => c.id === detailId) ?? null, [chemicals, detailId])
   const [formOpen, setFormOpen] = useState(false)
   const [seeding, setSeeding] = useState(false)
 
@@ -310,7 +315,7 @@ export default function DashboardPage() {
                   <li key={group[0].cas}>
                     <button
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-ink-50 dark:hover:bg-ink-800"
-                      onClick={() => setDetail(group[0])}
+                      onClick={() => setDetailId(group[0].id)}
                     >
                       <span className="min-w-0 flex-1 truncate text-sm text-ink-800 dark:text-ink-100">
                         {group[0].name}
@@ -344,7 +349,7 @@ export default function DashboardPage() {
                   <li key={c.id}>
                     <button
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-ink-50 dark:hover:bg-ink-800"
-                      onClick={() => setDetail(c)}
+                      onClick={() => setDetailId(c.id)}
                     >
                       <span className="min-w-0 flex-1 truncate text-sm">{c.name}</span>
                       <span className="hidden shrink-0 max-w-[6rem] truncate text-xs text-ink-400 sm:block">
@@ -430,7 +435,7 @@ export default function DashboardPage() {
                   {rows.map((c) => (
                     <button
                       key={c.id}
-                      onClick={() => setDetail(c)}
+                      onClick={() => setDetailId(c.id)}
                       className="flex w-full items-center justify-between gap-3 rounded-lg border border-ink-200 px-3 py-2 text-left transition-colors hover:border-pearl-300 hover:bg-pearl-50/50 dark:border-ink-800 dark:hover:border-pearl-600 dark:hover:bg-pearl-500/5"
                     >
                       <span className="min-w-0">
@@ -461,9 +466,9 @@ export default function DashboardPage() {
 
       <ChemicalDrawer
         chemical={detail}
-        onClose={() => setDetail(null)}
+        onClose={() => setDetailId(null)}
         onEdit={() => {
-          setDetail(null)
+          setDetailId(null)
           setFormOpen(true)
         }}
       />

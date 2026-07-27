@@ -5,6 +5,7 @@ import {
   FileX2,
   PackagePlus,
   Pencil,
+  ShieldCheck,
   Upload,
   UserPlus,
 } from 'lucide-react'
@@ -22,6 +23,8 @@ const ICON: Record<ActivityAction, typeof Pencil> = {
   restocked: PackagePlus,
   imported: Upload,
   signed_up: UserPlus,
+  invited: UserPlus,
+  role_changed: ShieldCheck,
 }
 
 export default function ActivityPage() {

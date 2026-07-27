@@ -263,13 +263,20 @@ create policy "profiles readable by signed-in users"
 -- role that way — that goes through the admin branch below), or you're an
 -- admin editing anyone's, role included.
 drop policy if exists "users edit their own profile" on public.profiles;
+-- IMPORTANT: never embed a raw subquery on `profiles` inside a policy ON
+-- `profiles` — that's what "infinite recursion detected in policy for
+-- relation profiles" means. Evaluating the policy requires evaluating the
+-- subquery, which is itself subject to this table's RLS, which requires
+-- evaluating the policy again. Route every such lookup through
+-- current_user_role()/is_approved() instead — both SECURITY DEFINER, so they
+-- bypass RLS on the way in rather than triggering it again.
 drop policy if exists "profile updates" on public.profiles;
 create policy "profile updates"
   on public.profiles for update
   to authenticated
   using (id = (select auth.uid()) or public.current_user_role() = 'admin')
   with check (
-    (id = (select auth.uid()) and role = (select role from public.profiles p where p.id = (select auth.uid())))
+    (id = (select auth.uid()) and role = public.current_user_role())
     or public.current_user_role() = 'admin'
   );
 

@@ -55,7 +55,11 @@ export default function InventoryPage() {
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
-  const [detail, setDetail] = useState<Chemical | null>(null)
+  // Tracked by id, not by object reference — deriving the live row below
+  // means the open drawer always reflects the latest state (e.g. right after
+  // "Mark empty") instead of freezing on whatever it looked like when opened.
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const detail = useMemo(() => chemicals.find((c) => c.id === detailId) ?? null, [chemicals, detailId])
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Chemical | null>(null)
   const [importOpen, setImportOpen] = useState(false)
@@ -68,7 +72,7 @@ export default function InventoryPage() {
     if (!code || chemicals.length === 0) return
     const hit = chemicals.find((c) => c.code === code)
     if (hit) {
-      setDetail(hit)
+      setDetailId(hit.id)
       setParams({}, { replace: true })
     } else {
       toast.error(`No container with the code ${code}.`)
@@ -366,7 +370,7 @@ export default function InventoryPage() {
                       selected.has(c.id) && 'bg-pearl-50 dark:bg-pearl-500/10',
                       c.status === 'empty' && 'opacity-60',
                     )}
-                    onClick={() => setDetail(c)}
+                    onClick={() => setDetailId(c.id)}
                   >
                     <td className="px-3" onClick={(e) => e.stopPropagation()}>
                       <input
@@ -443,10 +447,10 @@ export default function InventoryPage() {
 
       <ChemicalDrawer
         chemical={detail}
-        onClose={() => setDetail(null)}
+        onClose={() => setDetailId(null)}
         onEdit={(c) => {
           setEditing(c)
-          setDetail(null)
+          setDetailId(null)
           setFormOpen(true)
         }}
       />
