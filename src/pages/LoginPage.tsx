@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -40,12 +40,41 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [linkSent, setLinkSent] = useState(false)
+  const [useCode, setUseCode] = useState(false)
+  const [code, setCode] = useState('')
+  const [verifyingCode, setVerifyingCode] = useState(false)
+
+  // Set by main.tsx when the URL that brought us here carried an
+  // `error=`/`error_code=` from a dead magic link, before the router ever
+  // saw it — surfaced once, then cleared so it doesn't reappear on refresh.
+  useEffect(() => {
+    const stashed = sessionStorage.getItem('pearl.auth_error')
+    if (stashed) {
+      setError(stashed)
+      sessionStorage.removeItem('pearl.auth_error')
+    }
+  }, [])
 
   function switchTab(t: Tab) {
     setTab(t)
     setError(null)
     setNotice(null)
     setLinkSent(false)
+    setUseCode(false)
+    setCode('')
+  }
+
+  async function verifyCode() {
+    setError(null)
+    if (!code.trim()) return setError('Enter the 6-digit code from the email.')
+    setVerifyingCode(true)
+    try {
+      await auth.verifyEmailCode(email, code)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That code didn’t work. Please try again.')
+    } finally {
+      setVerifyingCode(false)
+    }
   }
 
   async function onSubmitMagicLink(e: FormEvent) {
@@ -278,9 +307,50 @@ export default function LoginPage() {
                   We sent a sign-in link to <strong>{email}</strong>. Open it on this device and
                   you're in — no password needed. The link expires after an hour.
                 </p>
+
+                {useCode ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      void verifyCode()
+                    }}
+                    className="mt-3 space-y-2.5"
+                  >
+                    <p className="leading-relaxed text-pearl-800 dark:text-pearl-100/80">
+                      The same email also has a 6-digit code — use it if the link doesn't work
+                      (some institutional email gateways open links automatically to scan them,
+                      which uses them up before you click).
+                    </p>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="123456"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      autoFocus
+                    />
+                    <button type="submit" className="btn-primary w-full" disabled={verifyingCode}>
+                      {verifyingCode ? <Spinner /> : <KeyRound className="h-4 w-4" />} Verify code
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    className="mt-3 text-xs font-semibold text-pearl-700 underline dark:text-pearl-300"
+                    onClick={() => setUseCode(true)}
+                  >
+                    Link not working? Enter the code from the email instead
+                  </button>
+                )}
+
                 <button
-                  className="mt-3 text-xs font-semibold text-pearl-700 underline dark:text-pearl-300"
-                  onClick={() => setLinkSent(false)}
+                  className="mt-3 block text-xs font-semibold text-pearl-700 underline dark:text-pearl-300"
+                  onClick={() => {
+                    setLinkSent(false)
+                    setUseCode(false)
+                    setCode('')
+                  }}
                 >
                   Use a different email
                 </button>
@@ -325,12 +395,44 @@ export default function LoginPage() {
                   </div>
                 </Field>
 
+                {useCode && (
+                  <Field label="Code from a previous email" hint="Already have one? Skip sending a new link.">
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="123456"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                    />
+                  </Field>
+                )}
+
                 {error && <ErrorBanner message={error} />}
                 {notice && <NoticeBanner message={notice} />}
 
-                <button type="submit" className="btn-primary w-full" disabled={busy}>
-                  {busy ? <Spinner /> : <MailCheck className="h-4 w-4" />}
-                  Send me a sign-in link
+                {useCode ? (
+                  <button
+                    type="button"
+                    className="btn-primary w-full"
+                    disabled={verifyingCode}
+                    onClick={() => void verifyCode()}
+                  >
+                    {verifyingCode ? <Spinner /> : <KeyRound className="h-4 w-4" />} Verify code
+                  </button>
+                ) : (
+                  <button type="submit" className="btn-primary w-full" disabled={busy}>
+                    {busy ? <Spinner /> : <MailCheck className="h-4 w-4" />}
+                    Send me a sign-in link
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="w-full text-center text-xs font-medium text-ink-500 hover:text-pearl-700 dark:hover:text-pearl-400"
+                  onClick={() => setUseCode((v) => !v)}
+                >
+                  {useCode ? 'Send a new link instead' : 'Already have a code? Enter it here'}
                 </button>
               </form>
             )

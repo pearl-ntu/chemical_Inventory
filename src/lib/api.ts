@@ -158,6 +158,28 @@ export const auth = {
   },
 
   /**
+   * The same email as the magic link also carries a 6-digit code — the
+   * fallback for when the link itself doesn't work. That happens more than
+   * it should: some institutional email gateways pre-fetch every link in an
+   * inbound message to scan it for phishing, which silently burns a
+   * single-use magic link before the person ever clicks it. Nothing types a
+   * code in on your behalf, so this path can't be pre-consumed the same way.
+   */
+  async verifyEmailCode(email: string, code: string): Promise<void> {
+    if (!IS_CLOUD) {
+      throw new ApiError(
+        'Email codes need the shared database. In demo mode, sign up with a password instead.',
+      )
+    }
+    const { error } = await requireSupabase().auth.verifyOtp({
+      email: email.trim(),
+      token: code.trim(),
+      type: 'email',
+    })
+    if (error) throw new ApiError(error.message)
+  },
+
+  /**
    * An admin inviting someone by email — same mechanism as the sign-up
    * page's magic link, just triggered from the Members page instead of
    * waiting for the person to find the app themselves. There's no way to

@@ -172,6 +172,33 @@ Add every URL the app is ever reachable at — the deployed one and your local
 one both need to be listed, or clicking a magic link will fail with a
 "redirect not allowed" error.
 
+### If a link says "invalid or expired" within seconds of being sent
+
+A magic link is single-use. If NTU's (or any institution's) email gateway
+pre-fetches links in incoming mail to scan them for phishing — which is what
+the **"[Alert: Non-NTU Email]"** banner on external senders is a sign of —
+that scan opens and burns the link before the person ever clicks it. The app
+now shows a plain-language error when this happens instead of silently
+dropping you on the sign-in page, but the real fix is giving people a second
+way in that a scanner can't use on their behalf: the same email also carries
+a plain 6-digit code, and the app has a "Link not working? Enter the code
+from the email instead" option — but only once the template actually includes
+that code.
+
+**Authentication → Email Templates → Magic Link** — add `{{ .Token }}`
+somewhere in the body, e.g.:
+
+```html
+<h2>Your sign-in link</h2>
+<p>Follow the link below to sign in. This link expires shortly and can only be used once.</p>
+<p><a href="{{ .ConfirmationURL }}">Sign in</a></p>
+<p>Link not working? Enter this code in the app instead: <strong>{{ .Token }}</strong></p>
+```
+
+This one template covers both the sign-up magic link and an admin's invite
+from the Members page — both go through the same `signInWithOtp` call under
+the hood, so there's nothing to change in a separate "Invite" template.
+
 ---
 
 ## 7. Point the app at it
