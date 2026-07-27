@@ -198,7 +198,9 @@ function normaliseHeader(h: string): keyof ChemicalInput | null {
   const key = h
     .toLowerCase()
     .replace(/\(.*?\)/g, '')
-    .replace(/[_\s]+/g, ' ')
+    // Hyphens and underscores are separators, not noise — dropping them would
+    // turn "Sub-location" into "sublocation" and lose the match.
+    .replace(/[_\-\s]+/g, ' ')
     .replace(/[^a-z0-9. ]/g, '')
     .trim()
   return HEADER_ALIASES[key] ?? HEADER_ALIASES[key.replace(/\.$/, '')] ?? null
