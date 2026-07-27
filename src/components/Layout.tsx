@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
   BarChart3,
@@ -202,6 +202,7 @@ export function DemoBanner() {
 
 export function AppShell({ children }: { children?: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const location = useLocation()
 
   return (
     <div className="flex h-full">
@@ -246,7 +247,11 @@ export function AppShell({ children }: { children?: ReactNode }) {
         <DemoBanner />
 
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1400px] p-4 sm:p-6">{children ?? <Outlet />}</div>
+          {/* Keyed by route so every navigation re-triggers the entrance
+              animation — the app otherwise cuts between pages instantly. */}
+          <div key={location.pathname} className="mx-auto w-full max-w-[1400px] p-4 sm:p-6 animate-slide-up">
+            {children ?? <Outlet />}
+          </div>
         </main>
       </div>
     </div>

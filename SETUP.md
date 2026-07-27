@@ -59,18 +59,30 @@ restoring after a wipe.
 
 ## 4. Turn off email confirmation (recommended for a lab)
 
-By default Supabase emails a confirmation link to every new sign-up, and the
-free tier's built-in mailer is rate-limited and often lands in spam. For an
-internal lab tool, it is friction with no benefit.
+This affects the **password** sign-up path only. By default Supabase emails a
+confirmation link to every new password sign-up, and the free tier's built-in
+mailer is rate-limited and often lands in spam. For an internal lab tool, it
+is friction with no benefit.
 
 **Authentication → Sign In / Providers → Email** → switch **Confirm email**
 off → **Save**.
 
-Now a new member signs up and is straight in. If you would rather keep
-confirmation on, the app handles it — it tells people to check their inbox.
+Now a new member signs up with a password and is straight in. If you would
+rather keep confirmation on, the app handles it — it tells people to check
+their inbox.
 
-> Keeping unwanted sign-ups out is better handled by the email allow-list in
-> step 6, which restricts accounts to NTU addresses.
+> Keeping unwanted sign-ups out is better handled by the email allow-list,
+> set in `.env` in step 7 below — it restricts accounts to NTU addresses.
+
+> **Magic links are a different story.** The app defaults to email-link
+> sign-in, and that *always* needs a real email to arrive — there's no
+> "confirmation toggle" to skip it, the whole method is the email. Supabase's
+> built-in mailer is fine for testing but is rate-limited (a few sends per
+> hour) and not meant for a whole lab's daily use. Before relying on this day
+> to day, set up a free SMTP relay (Resend, Brevo, or your own NTU mail
+> account all work) under **Authentication → Emails → SMTP Settings** —
+> otherwise sign-ins will intermittently fail to arrive once more than a
+> couple of people are using it around the same time.
 
 ---
 
@@ -97,10 +109,10 @@ depending on when the project was created.
 
 ---
 
-## 5b. Add the app's URL to the redirect allow-list
+## 6. Add the app's URL to the redirect allow-list
 
-Both magic links and Google sign-in bounce the browser back to the app after
-the click. Supabase only allows that redirect to land on URLs you've approved.
+A magic link bounces the browser back to the app after the click. Supabase
+only allows that redirect to land on URLs you've approved.
 
 **Authentication → URL Configuration**:
 
@@ -110,31 +122,8 @@ the click. Supabase only allows that redirect to land on URLs you've approved.
   (or whatever port `npm run dev` prints) so it also works while developing.
 
 Add every URL the app is ever reachable at — the deployed one and your local
-one both need to be listed, or sign-in will fail with a "redirect not allowed"
-error right after the click.
-
----
-
-## 6. Add Google sign-in (optional)
-
-Skip this section if email links are enough for the group — magic links work
-out of the box with nothing further to configure. Add Google on top if people
-would rather use their NTU Google account.
-
-1. In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
-   create an **OAuth client ID** of type **Web application**.
-   - **Authorized redirect URI:** copy this from Supabase — **Authentication →
-     Providers → Google** shows the exact callback URL to paste in
-     (`https://<project>.supabase.co/auth/v1/callback`).
-2. Copy the **Client ID** and **Client Secret** Google gives you.
-3. Back in Supabase, **Authentication → Providers → Google** → paste both →
-   **Enable** → **Save**.
-
-That's it — the "Continue with Google" button in the app starts working
-immediately, no rebuild needed. If your group is entirely `@e.ntu.edu.sg`, you
-can restrict the Google OAuth consent screen to your Google Workspace domain
-from the same Cloud Console project, which stops anyone outside NTU from even
-seeing the login prompt.
+one both need to be listed, or clicking a magic link will fail with a
+"redirect not allowed" error.
 
 ---
 
@@ -149,8 +138,8 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
 # Restrict sign-ups to the university. Delete the line to let anyone in.
 VITE_ALLOWED_EMAIL_DOMAINS=e.ntu.edu.sg,ntu.edu.sg
 
-VITE_LAB_NAME=PEARL Group
-VITE_LAB_SUBTITLE=Prof. Xiaogang Liu Lab · NTU Singapore
+VITE_LAB_NAME=PEARL
+VITE_LAB_SUBTITLE=Photon Emission & Reactivity Lab · Prof. Xiaogang Liu · NTU Singapore
 ```
 
 Restart the dev server (`npm run dev`). The amber "Demo mode" banner disappears
@@ -160,7 +149,7 @@ and Settings shows the connected host — that is how you know it worked.
 
 ## 8. Create the first account
 
-Sign up in the app — by email link, Google, or password, whichever you set up.
+Sign up in the app — by email link or password, whichever you prefer.
 **The first account created becomes the admin**, so make it yours or the PI's,
 not a test address. If you do create a test account first, you can fix it in
 Supabase: **Table Editor → profiles →** change `role` to `admin` on the right
@@ -179,7 +168,7 @@ GitHub, set **Pages → Source → GitHub Actions**, and add `VITE_SUPABASE_URL`
 `VITE_SUPABASE_ANON_KEY` as repository **Variables**.
 
 Once it's live at its real GitHub Pages URL, double check that URL is in the
-redirect allow-list from step 5b — that's the step people forget, and the
+redirect allow-list from step 6 — that's the step people forget, and the
 symptom is sign-in working locally but failing the moment it's live.
 
 ---
@@ -214,9 +203,9 @@ future version needs new columns, it will come with a migration file in
 | Sign-up succeeds, then "no profile could be loaded" | The trigger from step 2 did not run | Re-run `supabase/schema.sql`. |
 | "new row violates row-level security policy" | Your account is a `viewer` | An admin can promote you on the Members page. |
 | Nobody is an admin | The first sign-up predated the schema | Supabase → Table Editor → `profiles` → set `role` to `admin`. |
-| Magic link / Google redirects to an error page, or "redirect not allowed" | The app's URL isn't on the allow-list | Add it under **Authentication → URL Configuration** (step 5b) — both the deployed URL and your `localhost` one. |
+| Magic link redirects to an error page, or "redirect not allowed" | The app's URL isn't on the allow-list | Add it under **Authentication → URL Configuration** (step 6) — both the deployed URL and your `localhost` one. |
 | Clicking a magic link signs in on a different device than expected | Expected — the link itself carries the session | Open it on the device you actually want signed in; if you checked mail on your phone, forward the link or open it there. |
-| "Continue with Google" does nothing / shows a Google error | Google provider not enabled, or the redirect URI in Google Cloud doesn't match | Re-check step 6 — the callback URL must match exactly, including `https://`. |
+| Magic link email never arrives | Supabase's default mailer is rate-limited (a few emails/hour) and often lands in spam | Check spam first. For anything beyond a handful of sign-ups, set a custom SMTP provider under **Authentication → Emails → SMTP Settings** — Supabase's default sender is meant for testing, not daily use by a whole lab. |
 | Published site is blank | Wrong base path | The app uses `HashRouter` and relative asset paths, so this should not happen. If it does, check that the Pages build actually finished in the Actions tab. |
 | Structures and auto-fill do nothing | PubChem unreachable | This is optional enrichment and always fails soft. Everything else keeps working. |
 

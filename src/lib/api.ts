@@ -151,25 +151,6 @@ export const auth = {
     if (error) throw new ApiError(error.message)
   },
 
-  /**
-   * Google OAuth. Returns only after the browser has been handed to Google —
-   * the session is picked up on the way back by `detectSessionInUrl`.
-   */
-  async signInWithGoogle(): Promise<void> {
-    if (!IS_CLOUD) {
-      throw new ApiError('Google sign-in needs the shared database. See SETUP.md.')
-    }
-    const { error } = await requireSupabase().auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectUrl(),
-        // Ask for a refresh token so long sessions survive a closed laptop.
-        queryParams: { access_type: 'offline', prompt: 'consent' },
-      },
-    })
-    if (error) throw new ApiError(error.message)
-  },
-
   async signOut(): Promise<void> {
     if (!IS_CLOUD) {
       localDb.setSession(null)

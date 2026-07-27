@@ -265,7 +265,7 @@ export default function DashboardPage() {
                 {stats.duplicates.slice(0, 5).map((group) => (
                   <li key={group[0].cas}>
                     <button
-                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-ink-50 dark:hover:bg-ink-800"
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-ink-50 dark:hover:bg-ink-800"
                       onClick={() => setDetail(group[0])}
                     >
                       <span className="flex-1 truncate text-sm text-ink-800 dark:text-ink-100">
@@ -299,7 +299,7 @@ export default function DashboardPage() {
                 {stats.expiring.slice(0, 5).map((c) => (
                   <li key={c.id}>
                     <button
-                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-ink-50 dark:hover:bg-ink-800"
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-ink-50 dark:hover:bg-ink-800"
                       onClick={() => setDetail(c)}
                     >
                       <span className="flex-1 truncate text-sm">{c.name}</span>

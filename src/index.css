@@ -44,12 +44,14 @@
 
 @layer components {
   .card {
-    @apply rounded-xl border border-ink-200 bg-white shadow-card dark:border-ink-800 dark:bg-ink-900;
+    @apply rounded-xl border border-ink-200 bg-white shadow-card transition-shadow duration-150
+           dark:border-ink-800 dark:bg-ink-900;
   }
 
   .btn {
     @apply inline-flex select-none items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm
-           font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50;
+           font-semibold transition duration-150 ease-out
+           active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100;
   }
   .btn-primary {
     @apply btn bg-pearl-600 text-white hover:bg-pearl-700 active:bg-pearl-800;

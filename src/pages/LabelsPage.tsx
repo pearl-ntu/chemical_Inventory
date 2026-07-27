@@ -104,7 +104,7 @@ export default function LabelsPage() {
             <ul className="divide-y divide-ink-100 dark:divide-ink-800">
               {matches.map((c) => (
                 <li key={c.id}>
-                  <label className="flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-ink-50 dark:hover:bg-ink-800">
+                  <label className="flex cursor-pointer items-center gap-3 px-4 py-2 transition-colors hover:bg-ink-50 dark:hover:bg-ink-800">
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-ink-300 text-pearl-600 focus:ring-pearl-500"

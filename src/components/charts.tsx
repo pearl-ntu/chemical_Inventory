@@ -349,8 +349,8 @@ export function StatTile({
     <Tag
       {...(onClick ? { onClick, type: 'button' as const } : {})}
       className={cx(
-        'card flex items-center gap-4 p-4 text-left transition-shadow',
-        onClick && 'hover:shadow-pop',
+        'card flex items-center gap-4 p-4 text-left',
+        onClick && 'transition hover:shadow-pop hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]',
       )}
     >
       {icon && <div className={cx('rounded-lg p-2.5', toneRing)}>{icon}</div>}
