@@ -81,10 +81,55 @@ their inbox.
 > "confirmation toggle" to skip it, the whole method is the email. Supabase's
 > built-in mailer is fine for testing but is rate-limited (a few sends per
 > hour) and not meant for a whole lab's daily use. Before relying on this day
-> to day, set up a free SMTP relay (Resend, Brevo, or your own NTU mail
-> account all work) under **Authentication → Emails → SMTP Settings** —
-> otherwise sign-ins will intermittently fail to arrive once more than a
-> couple of people are using it around the same time.
+> to day, set up custom SMTP (steps below) — otherwise sign-ins and invites
+> will intermittently fail to arrive, especially to institutional addresses
+> like `@ntu.edu.sg`, which tend to filter automated mail from unrecognised
+> senders more aggressively than a personal inbox does.
+
+### Setting up custom SMTP with Resend (do this before relying on the app)
+
+Takes about ten minutes. **One prerequisite you need before starting: a
+domain you control the DNS for.** Resend (like every serious email provider)
+requires you to verify a domain you own — there's no shared "just send it"
+option, because that's exactly the kind of unverified sending that gets
+filtered as spam, which is the whole problem this fixes. If the lab or NTU
+doesn't already have a domain you can add DNS records to, the cheapest path
+is registering one for a few dollars a year (Cloudflare and Namecheap both
+sell them) just for this — you don't need to build a website on it, it only
+has to exist for the DNS records below. A subdomain like `mail.pearl-ntu.org`
+works fine and is actually recommended over using a bare root domain.
+
+1. **Sign up** at [resend.com](https://resend.com) — free tier, no card needed.
+2. **Add your domain**: Dashboard → **Domains → Add Domain**. Use a
+   subdomain (e.g. `mail.yourdomain.com`) rather than the root domain, so
+   this sending reputation stays separate from anything else on the domain.
+3. Resend shows you a handful of DNS records (SPF, DKIM, and usually DMARC).
+   **Add every one of them** at wherever your domain's DNS is managed
+   (Cloudflare, Namecheap, GoDaddy, whoever you registered it through).
+4. Back in Resend, click **Verify** — DNS changes can take anywhere from a
+   few minutes to a few hours to propagate, so this may not go green
+   immediately. Refresh and check back if it doesn't.
+5. Once verified, go to **API Keys → Create API Key** and copy it — this is
+   your SMTP password, shown only once.
+6. In Supabase: **Authentication → Emails → SMTP Settings** → enable custom
+   SMTP → fill in:
+
+   | Field | Value |
+   |---|---|
+   | Sender email | something **@your verified domain** (e.g. `noreply@mail.pearl-ntu.org`) — must match the domain you verified, not a Gmail address |
+   | Sender name | PEARL Inventory (or whatever the group prefers) |
+   | Host | `smtp.resend.com` |
+   | Port | `587` (or `465` for SSL instead of STARTTLS — either works) |
+   | Username | `resend` (literally that word, not your email) |
+   | Password | the API key from step 5 |
+
+7. **Save**, then try a sign-up or invite again to confirm it goes through.
+
+If nobody in the group can get a domain, ask NTU IT whether they'll run
+automated mail for a departmental tool through their own mail relay instead
+— many universities do this on request; it sidesteps the domain-verification
+step entirely since the mail would come from an address NTU's own filters
+already trust.
 
 ---
 
@@ -231,7 +276,8 @@ future version needs new columns, it will come with a migration file in
 | Approved someone but they still see "Waiting for approval" | They're on a cached session | Have them hit **Check again** on that screen, or sign out and back in. |
 | Magic link redirects to an error page, or "redirect not allowed" | The app's URL isn't on the allow-list | Add it under **Authentication → URL Configuration** (step 6) — both the deployed URL and your `localhost` one. |
 | Clicking a magic link signs in on a different device than expected | Expected — the link itself carries the session | Open it on the device you actually want signed in; if you checked mail on your phone, forward the link or open it there. |
-| Magic link email never arrives | Supabase's default mailer is rate-limited (a few emails/hour) and often lands in spam | Check spam first. For anything beyond a handful of sign-ups, set a custom SMTP provider under **Authentication → Emails → SMTP Settings** — Supabase's default sender is meant for testing, not daily use by a whole lab. |
+| Magic link email never arrives, especially to `@ntu.edu.sg` | Supabase's default mailer is rate-limited (a few emails/hour) and institutional mail filters are often stricter about unrecognised senders than a personal inbox | Check spam first. Set up custom SMTP with Resend (step 4, above) — this is the actual fix, not a workaround, and worth doing before relying on the app day to day. |
+| "For security purposes, you can only request this after N seconds" | Supabase's own cooldown between consecutive sign-in/invite requests to the same address — normal, unrelated to whether earlier emails arrived | Just wait it out. Doesn't indicate a delivery problem either way. |
 | Published site is blank | Wrong base path | The app uses `HashRouter` and relative asset paths, so this should not happen. If it does, check that the Pages build actually finished in the Actions tab. |
 | Structures and auto-fill do nothing | PubChem unreachable | This is optional enrichment and always fails soft. Everything else keeps working. |
 
