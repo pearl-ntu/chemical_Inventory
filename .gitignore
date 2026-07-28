@@ -12,5 +12,6 @@ npm-debug.log*
 .vscode/*
 !.vscode/extensions.json
 .idea/
+.claude/
 ~$*.xlsx
 vite.config.ts.timestamp-*

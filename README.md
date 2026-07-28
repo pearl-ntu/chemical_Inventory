@@ -173,6 +173,6 @@ MIT — see [LICENSE](LICENSE). Use it, fork it, adapt it for another group.
 ---
 
 <div align="center">
-<sub>Built as a parting gift for the PEARL Group.<br/>
+<sub>Vibecoded by Syed Ali Abbas Abedi as a parting gift for the PEARL Group.<br/>
 May your fridges always be organised. 🧪</sub>
 </div>
