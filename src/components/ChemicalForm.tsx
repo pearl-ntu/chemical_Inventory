@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { Beaker, PenTool, Sparkles, TriangleAlert, X } from 'lucide-react'
+import { Beaker, CheckCircle2, ExternalLink, PenTool, Search, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { DeliveryPhotoPanel } from './DeliveryPhotoPanel'
 import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
@@ -111,10 +111,12 @@ export function ChemicalForm({
   const [drawOpen, setDrawOpen] = useState(false)
   const [reactionOpen, setReactionOpen] = useState(false)
   const [structuralDuplicate, setStructuralDuplicate] = useState<Chemical | null>(null)
+  const [enrichedInfo, setEnrichedInfo] = useState<pubchem.PubChemInfo | null>(null)
 
   useEffect(() => {
     if (!open) return
     setErrors({})
+    setEnrichedInfo(null)
     setForm(editing ? { ...editing } : blank({}, profile?.full_name ?? ''))
   }, [open, editing, profile])
 
@@ -171,12 +173,19 @@ export function ChemicalForm({
         toast.info('PubChem had no match — fill the details in by hand.')
         return
       }
+      const molfile =
+        info.smiles && !form.structure_molfile ? await pubchem.molfileFromSmiles(info.smiles) : null
       setForm((f) => ({
         ...f,
+        name: f.name.trim() || info.name || info.iupacName || f.name,
         formula: info.formula ?? f.formula,
         mol_weight: info.molecularWeight ?? f.mol_weight,
+        structure_molfile: f.structure_molfile ?? molfile,
       }))
-      toast.success(`Filled in from PubChem (CID ${info.cid}).`)
+      setEnrichedInfo(info)
+      toast.success(
+        `Filled name, formula, molar mass${molfile ? ', and structure' : ''} from PubChem (CID ${info.cid}).`,
+      )
     } catch {
       toast.error('Could not reach PubChem. Check the connection, or fill it in by hand.')
     } finally {
@@ -281,7 +290,7 @@ export function ChemicalForm({
                 className="btn-secondary w-full sm:w-auto"
                 onClick={() => void autofill()}
                 disabled={looking}
-                title="Look the compound up on PubChem and fill in the formula and molar mass"
+                title="Look the compound up on PubChem and fill in name, formula, molar mass, and structure"
               >
                 {looking ? <Spinner /> : <Sparkles className="h-4 w-4" />}
                 Auto-fill
@@ -300,6 +309,77 @@ export function ChemicalForm({
             </div>
           </div>
 
+          {enrichedInfo && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="font-semibold text-emerald-900 dark:text-emerald-100">
+                    Verified PubChem match: {enrichedInfo.name ?? enrichedInfo.iupacName ?? `CID ${enrichedInfo.cid}`}
+                  </p>
+                  <p className="mt-0.5 text-xs text-emerald-800/80 dark:text-emerald-200/75">
+                    CID {enrichedInfo.cid}
+                    {enrichedInfo.formula && ` · ${enrichedInfo.formula}`}
+                    {enrichedInfo.molecularWeight != null &&
+                      ` · ${enrichedInfo.molecularWeight.toFixed(2)} g/mol`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={enrichedInfo.pageUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="btn-secondary py-1.5 text-xs"
+                  >
+                    PubChem <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <a
+                    href={pubchem.sdsSearchUrl(
+                      enrichedInfo.name ?? form.name,
+                      form.cas,
+                      form.supplier,
+                    )}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="btn-secondary py-1.5 text-xs"
+                  >
+                    SDS <ExternalLink className="h-3 w-3" />
+                  </a>
+                  {form.structure_molfile && (
+                    <button
+                      type="button"
+                      className="btn-secondary py-1.5 text-xs"
+                      onClick={() => setDrawOpen(true)}
+                    >
+                      <PenTool className="h-3 w-3" /> Review structure
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-emerald-200/70 pt-3 dark:border-emerald-400/20">
+                <span className="mr-1 flex items-center gap-1 text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                  <Search className="h-3.5 w-3.5" /> Supplier check
+                </span>
+                {pubchem.SUPPLIER_SEARCHES.map((supplier) => (
+                  <a
+                    key={supplier.label}
+                    href={pubchem.supplierSearchUrl(
+                      supplier.terms,
+                      enrichedInfo.name ?? form.name,
+                      form.cas,
+                    )}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="rounded-full border border-emerald-300 bg-white/70 px-2.5 py-1 text-xs font-medium text-emerald-900 hover:bg-white dark:border-emerald-500/40 dark:bg-emerald-950/30 dark:text-emerald-100"
+                  >
+                    {supplier.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {form.structure_molfile && (
             <div className="flex items-center gap-3 rounded-lg border border-ink-200 bg-white p-2 dark:border-ink-700 dark:bg-ink-950">
               <div className="viz-root flex h-20 w-28 shrink-0 items-center justify-center overflow-hidden rounded bg-white">
@@ -308,8 +388,8 @@ export function ChemicalForm({
                 </Suspense>
               </div>
               <p className="flex-1 text-xs text-ink-500">
-                Hand-drawn structure attached. Formula and molar mass were filled in from it — edit
-                either field afterward if you need to.
+                Structure attached. It can come from PubChem auto-fill or your own drawing; open
+                the editor if you need to adjust atoms, charges, or stereochemistry.
               </p>
               <button
                 type="button"

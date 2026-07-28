@@ -11,6 +11,7 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30 // a molecule's formula does not c
 
 export interface PubChemInfo {
   cid: number
+  name: string | null
   formula: string | null
   molecularWeight: number | null
   iupacName: string | null
@@ -79,6 +80,7 @@ export async function lookup(cas: string | null, name: string | null): Promise<P
 
 interface PubChemProperties {
   CID: number
+  Title?: string
   MolecularFormula?: string
   MolecularWeight?: string | number
   IUPACName?: string
@@ -91,7 +93,7 @@ interface PubChemProperties {
 }
 
 async function fetchProperties(pathPrefix: string): Promise<PubChemInfo | null> {
-  const url = `${BASE}/${pathPrefix}/property/MolecularFormula,MolecularWeight,IUPACName,ConnectivitySMILES/JSON`
+  const url = `${BASE}/${pathPrefix}/property/Title,MolecularFormula,MolecularWeight,IUPACName,ConnectivitySMILES/JSON`
   const res = await fetch(url, { headers: { Accept: 'application/json' } })
   if (!res.ok) return null
 
@@ -104,12 +106,35 @@ async function fetchProperties(pathPrefix: string): Promise<PubChemInfo | null> 
   const mw = p.MolecularWeight == null ? null : Number(p.MolecularWeight)
   return {
     cid: p.CID,
+    name: p.Title ?? p.IUPACName ?? null,
     formula: p.MolecularFormula ?? null,
     molecularWeight: Number.isFinite(mw as number) ? (mw as number) : null,
     iupacName: p.IUPACName ?? null,
     smiles: p.ConnectivitySMILES ?? null,
     imageUrl: structureImageUrl(p.CID),
     pageUrl: pubchemPageUrl(p.CID),
+  }
+}
+
+/**
+ * Converts a PubChem SMILES hit into the same V3000 Molfile shape the built-in
+ * drawing editor stores. Kept behind a dynamic import so browsing the inventory
+ * still avoids loading the chemistry editor bundle until enrichment needs it.
+ */
+export async function molfileFromSmiles(smiles: string): Promise<string | null> {
+  const trimmed = smiles.trim()
+  if (!trimmed) return null
+
+  try {
+    const mod = await import('openchemlib')
+    const shimmed = mod as unknown as {
+      Molecule?: typeof mod.Molecule
+      default?: { Molecule: typeof mod.Molecule }
+    }
+    const Molecule = shimmed.Molecule ?? shimmed.default?.Molecule
+    return Molecule?.fromSmiles(trimmed).toMolfileV3() ?? null
+  } catch {
+    return null
   }
 }
 
@@ -145,5 +170,22 @@ export async function lookupBySmiles(smiles: string): Promise<PubChemInfo | null
 /** Safety Data Sheet search, scoped to the supplier when we know it. */
 export function sdsSearchUrl(name: string, cas: string | null, supplier: string | null): string {
   const terms = [name, cas, supplier, 'safety data sheet'].filter(Boolean).join(' ')
+  return `https://www.google.com/search?q=${encodeURIComponent(terms)}`
+}
+
+export const SUPPLIER_SEARCHES = [
+  { label: 'Sigma', terms: 'Sigma-Aldrich Merck' },
+  { label: 'TCI', terms: 'TCI Chemicals' },
+  { label: 'Fisher', terms: 'Fisher Scientific' },
+  { label: 'Macklin', terms: 'Macklin chemical' },
+  { label: 'Aladdin', terms: 'Aladdin chemical' },
+] as const
+
+export function supplierSearchUrl(
+  supplierTerms: string,
+  name: string,
+  cas: string | null,
+): string {
+  const terms = [supplierTerms, cas, name, 'catalog price SDS'].filter(Boolean).join(' ')
   return `https://www.google.com/search?q=${encodeURIComponent(terms)}`
 }
