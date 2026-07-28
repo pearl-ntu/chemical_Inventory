@@ -16,6 +16,34 @@ import {
 } from './LazyStructure'
 import { useAuth } from '../context/AuthContext'
 
+const NEW_CHEMICAL_DRAFT_KEY = 'pearl.new_chemical_draft'
+
+function loadNewChemicalDraft(registeredBy: string): ChemicalInput {
+  try {
+    const raw = localStorage.getItem(NEW_CHEMICAL_DRAFT_KEY)
+    if (raw) return { ...blank({}, registeredBy), ...(JSON.parse(raw) as Partial<ChemicalInput>) }
+  } catch {
+    /* ignore corrupt or unavailable browser storage */
+  }
+  return blank({}, registeredBy)
+}
+
+function saveNewChemicalDraft(form: ChemicalInput) {
+  try {
+    localStorage.setItem(NEW_CHEMICAL_DRAFT_KEY, JSON.stringify(form))
+  } catch {
+    /* ignore quota/private browsing errors */
+  }
+}
+
+function clearNewChemicalDraft() {
+  try {
+    localStorage.removeItem(NEW_CHEMICAL_DRAFT_KEY)
+  } catch {
+    /* ignore unavailable browser storage */
+  }
+}
+
 /**
  * Two structures are "the same compound" if OpenChemLib's canonical idcode
  * matches — catches a real duplicate that the text-based CAS/name check
@@ -104,7 +132,7 @@ export function ChemicalForm({
   const { profile } = useAuth()
   const toast = useToast()
 
-  const [form, setForm] = useState<ChemicalInput>(() => blank({}, profile?.full_name ?? ''))
+  const [form, setForm] = useState<ChemicalInput>(() => loadNewChemicalDraft(profile?.full_name ?? ''))
   const [busy, setBusy] = useState(false)
   const [looking, setLooking] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -117,8 +145,13 @@ export function ChemicalForm({
     if (!open) return
     setErrors({})
     setEnrichedInfo(null)
-    setForm(editing ? { ...editing } : blank({}, profile?.full_name ?? ''))
+    setForm(editing ? { ...editing } : loadNewChemicalDraft(profile?.full_name ?? ''))
   }, [open, editing, profile])
+
+  useEffect(() => {
+    if (!open || editing) return
+    saveNewChemicalDraft(form)
+  }, [open, editing, form])
 
   const locations = useMemo(() => uniqueSorted(chemicals.map((c) => c.location)), [chemicals])
   const suppliers = useMemo(() => uniqueSorted(chemicals.map((c) => c.supplier)), [chemicals])
@@ -224,6 +257,8 @@ export function ChemicalForm({
       } else {
         const row = await create(payload)
         toast.success(`${row.name} registered as ${row.code}.`)
+        clearNewChemicalDraft()
+        setForm(blank({}, profile?.full_name ?? ''))
       }
       onClose()
     } catch (err) {

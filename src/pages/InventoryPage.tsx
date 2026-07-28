@@ -488,7 +488,14 @@ export default function InventoryPage() {
         }}
       />
 
-      <ChemicalForm open={formOpen} editing={editing} onClose={() => setFormOpen(false)} />
+      <ChemicalForm
+        open={formOpen}
+        editing={editing}
+        onClose={() => {
+          setFormOpen(false)
+          setEditing(null)
+        }}
+      />
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
 
       <ConfirmDialog
