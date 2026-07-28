@@ -189,3 +189,13 @@ export function supplierSearchUrl(
   const terms = [supplierTerms, cas, name, 'catalog price SDS'].filter(Boolean).join(' ')
   return `https://www.google.com/search?q=${encodeURIComponent(terms)}`
 }
+
+export function synthesisSearchUrl(name: string, cas: string | null): string {
+  const terms = [name, cas, 'synthesis preparation reaction conditions yield'].filter(Boolean).join(' ')
+  return `https://www.google.com/search?q=${encodeURIComponent(terms)}`
+}
+
+export function scholarSynthesisSearchUrl(name: string, cas: string | null): string {
+  const terms = [name, cas, 'synthesis'].filter(Boolean).join(' ')
+  return `https://scholar.google.com/scholar?q=${encodeURIComponent(terms)}`
+}

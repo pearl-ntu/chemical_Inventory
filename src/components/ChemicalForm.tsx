@@ -721,19 +721,47 @@ export function ChemicalForm({
             />
           </Field>
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-ink-500">
               If this was made in-house, attach the synthesis scheme that produced it.
             </p>
-            <button
-              type="button"
-              className="btn-secondary shrink-0"
-              onClick={() => setReactionOpen(true)}
-              title="Draw the reaction that produced this compound"
-            >
-              <Beaker className="h-4 w-4" />
-              {form.reaction_rxnfile ? 'Edit synthesis scheme' : 'Draw synthesis scheme'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {form.name.trim() && (
+                <>
+                  <a
+                    href={pubchem.synthesisSearchUrl(form.name, form.cas)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="btn-secondary shrink-0"
+                  >
+                    <Search className="h-4 w-4" /> Route search
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </a>
+                  <a
+                    href={pubchem.scholarSynthesisSearchUrl(form.name, form.cas)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="btn-secondary shrink-0"
+                  >
+                    Literature
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </a>
+                </>
+              )}
+              <button
+                type="button"
+                className="btn-secondary shrink-0"
+                onClick={() => setReactionOpen(true)}
+                title="Draw the reaction that produced this compound"
+              >
+                <Beaker className="h-4 w-4" />
+                {form.reaction_rxnfile
+                  ? 'Edit synthesis scheme'
+                  : form.structure_molfile
+                    ? 'Start scheme from product'
+                    : 'Draw synthesis scheme'}
+              </button>
+            </div>
           </div>
 
           {form.reaction_rxnfile && (
@@ -819,6 +847,7 @@ export function ChemicalForm({
             open={reactionOpen}
             onClose={() => setReactionOpen(false)}
             initialRxnfile={form.reaction_rxnfile}
+            initialProductMolfile={form.structure_molfile}
             onConfirm={(rxnfile) => {
               setForm((f) => ({ ...f, reaction_rxnfile: rxnfile }))
               setReactionOpen(false)
