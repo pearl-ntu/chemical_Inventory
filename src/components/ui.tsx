@@ -242,6 +242,17 @@ export function SearchInput({
 }) {
   const ref = useRef<HTMLInputElement>(null)
 
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('pearl.focus_search') === '1') {
+        sessionStorage.removeItem('pearl.focus_search')
+        window.setTimeout(() => ref.current?.focus(), 0)
+      }
+    } catch {
+      /* focus still works through the direct shortcut path */
+    }
+  }, [])
+
   // "/" focuses search from anywhere, the way lab folk expect from GitHub/Slack.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -250,7 +261,7 @@ export function SearchInput({
         el instanceof HTMLInputElement ||
         el instanceof HTMLTextAreaElement ||
         el instanceof HTMLSelectElement
-      if (e.key === '/' && !typing) {
+      if ((e.key === '/' || e.code === 'Slash') && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault()
         ref.current?.focus()
       }
@@ -270,6 +281,7 @@ export function SearchInput({
         placeholder={placeholder}
         className="input pl-9 pr-9"
         aria-label="Search inventory"
+        data-search-shortcut="true"
       />
       {value && (
         <button

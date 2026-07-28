@@ -203,6 +203,36 @@ export function DemoBanner() {
 export function AppShell({ children }: { children?: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement
+      const typing =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key !== '/' && e.code !== 'Slash') return
+
+      e.preventDefault()
+      const search = document.querySelector<HTMLInputElement>('[data-search-shortcut="true"]')
+      if (search) {
+        search.focus()
+        return
+      }
+
+      try {
+        sessionStorage.setItem('pearl.focus_search', '1')
+      } catch {
+        /* ignore private browsing/session storage failures */
+      }
+      navigate('/inventory')
+    }
+
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navigate])
 
   return (
     <div className="flex h-full">
