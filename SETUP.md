@@ -282,9 +282,10 @@ just fill in fields by hand, same as always.
 **You'll need:**
 - The [Supabase CLI](https://supabase.com/docs/guides/cli) installed
   (`npm install -g supabase`)
-- An [Anthropic API key](https://console.anthropic.com/settings/keys) —
-  this is billed separately from Claude.ai/Claude Code, a few cents per
-  photo read
+- An [OpenAI API key](https://platform.openai.com/api-keys) — this is
+  billed separately from any ChatGPT subscription, a few cents per photo
+  read (the function uses `gpt-4o-mini`, OpenAI's cheapest vision-capable
+  model)
 
 **Steps:**
 
@@ -294,7 +295,7 @@ just fill in fields by hand, same as always.
 2. **Set the secret** the function needs — never put this in `.env`, it
    must stay off the client entirely:
    ```bash
-   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   supabase secrets set OPENAI_API_KEY=sk-...
    ```
 3. **Deploy the function**:
    ```bash
