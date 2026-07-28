@@ -43,6 +43,9 @@ export interface Chemical {
   structure_molfile: string | null
   /** An optional drawn synthesis scheme (RXN format) — null if never drawn. */
   reaction_rxnfile: string | null
+  /** Path into the delivery-photos storage bucket (cloud) or a data URL
+   *  (demo mode) — a photo of the delivery order/invoice, for reference. */
+  delivery_photo_path: string | null
   purity: string | null
   quantity: number
   size_value: number | null

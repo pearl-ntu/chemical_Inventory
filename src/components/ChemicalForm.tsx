@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Beaker, PenTool, Sparkles, TriangleAlert, X } from 'lucide-react'
+import { DeliveryPhotoPanel } from './DeliveryPhotoPanel'
 import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
 import { hazardHint } from '../lib/hazardHints'
@@ -67,6 +68,7 @@ function blank(defaults: Partial<ChemicalInput>, registeredBy: string): Chemical
     mol_weight: null,
     structure_molfile: null,
     reaction_rxnfile: null,
+    delivery_photo_path: null,
     purity: null,
     quantity: 1,
     size_value: null,
@@ -672,6 +674,29 @@ export function ChemicalForm({
               </button>
             </div>
           )}
+
+          <div className="border-t border-ink-100 pt-4 dark:border-ink-800">
+            <DeliveryPhotoPanel
+              photoPath={form.delivery_photo_path}
+              onPhotoChange={(path) => set('delivery_photo_path', path)}
+              onApplyFields={(fields) => {
+                setForm((f) => ({
+                  ...f,
+                  ...(fields.name != null ? { name: fields.name } : {}),
+                  ...(fields.cas != null ? { cas: fields.cas } : {}),
+                  ...(fields.supplier != null ? { supplier: fields.supplier } : {}),
+                  ...(fields.catalog_no != null ? { catalog_no: fields.catalog_no } : {}),
+                  ...(fields.quantity != null ? { quantity: fields.quantity } : {}),
+                  ...(fields.size_value != null ? { size_value: fields.size_value } : {}),
+                  ...(fields.size_unit != null ? { size_unit: fields.size_unit } : {}),
+                  ...(fields.purity != null ? { purity: fields.purity } : {}),
+                  ...(fields.price != null ? { price: fields.price } : {}),
+                  ...(fields.currency != null ? { currency: fields.currency } : {}),
+                  ...(fields.system != null ? { system: fields.system } : {}),
+                }))
+              }}
+            />
+          </div>
         </section>
       </div>
 

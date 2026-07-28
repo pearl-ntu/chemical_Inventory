@@ -142,6 +142,13 @@ alter table public.chemicals add column if not exists structure_molfile text;
 -- of a single molecule. Nullable; most entries won't have one.
 alter table public.chemicals add column if not exists reaction_rxnfile text;
 
+-- A path (not a public URL) into the delivery-photos storage bucket below —
+-- a photo of the delivery order/invoice for this container, kept for
+-- reference. A path rather than a URL because the bucket is private; the
+-- client signs a temporary URL from this path whenever it actually needs to
+-- display the image.
+alter table public.chemicals add column if not exists delivery_photo_path text;
+
 create index if not exists chemicals_name_idx       on public.chemicals (lower(name));
 create index if not exists chemicals_cas_idx        on public.chemicals (cas);
 create index if not exists chemicals_location_idx   on public.chemicals (location);
@@ -409,6 +416,22 @@ create policy "owners and admins delete inventory"
     public.is_approved()
     and (public.current_user_role() = 'admin' or created_by = (select auth.uid()))
   );
+
+-- delivery-photos storage bucket ---------------------------------------------
+-- A photo of the delivery order/invoice for a container, purely for
+-- reference — never parsed automatically without a person confirming what to
+-- keep. Private (not `public`): a photo can show pricing, so it's gated by
+-- the same approval check as everything else, not "unlisted but guessable."
+insert into storage.buckets (id, name, public)
+values ('delivery-photos', 'delivery-photos', false)
+on conflict (id) do nothing;
+
+drop policy if exists "approved users manage delivery photos" on storage.objects;
+create policy "approved users manage delivery photos"
+  on storage.objects for all
+  to authenticated
+  using (bucket_id = 'delivery-photos' and public.is_approved())
+  with check (bucket_id = 'delivery-photos' and public.is_approved());
 
 -- activity_log --------------------------------------------------------------
 -- Same gate: the audit trail names people and describes what changed, which

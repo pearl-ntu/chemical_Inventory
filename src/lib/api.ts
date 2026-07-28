@@ -418,6 +418,7 @@ export const api = {
       mol_weight: null,
       structure_molfile: null,
       reaction_rxnfile: null,
+      delivery_photo_path: null,
       purity: null,
       quantity: r.quantity,
       size_value: r.size_value,

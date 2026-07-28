@@ -32,6 +32,7 @@ It ships pre-loaded with the group's real inventory as of **27 July 2026** —
 | ⚠️ **Safety built in** | GHS hazard tags, storage classes, and an automatic **segregation check** that flags shelves holding incompatible classes together. |
 | 🏷️ **Printable QR labels** | A sticker per bottle. Scan with any phone camera and that container's record opens. |
 | 🧬 **PubChem lookup** | Type a CAS number, get the formula, molar mass and structure drawing filled in. |
+| 📸 **Delivery photo** | Snap the delivery order/invoice at the bench. Optionally read it for candidate field values — always shown as a checklist you confirm before anything is filled in. |
 | 📊 **Analytics** | Totals on hand, top suppliers, purchasing routes, hazard profile, registrations over time. |
 | 🔁 **Duplicate warning** | Registering something the lab already holds? It tells you before you order again. |
 | 📥 **Import / export** | Plain CSV both ways. The original Excel sheet's column headings are recognised as-is. |
@@ -116,6 +117,7 @@ src/
     csv.ts          Import parser + export writer, forgiving header matching
     pubchem.ts      Optional PubChem enrichment, cached, fails soft
     hazardHints.ts  Curated hazard suggestions + incompatibility rules
+    deliveryPhoto.ts Delivery-photo upload + optional AI-read extraction
     qr.ts           QR label deep links
     utils.ts        Formatting, CAS check-digit validation, unit normalisation
   context/          Auth, inventory store, toasts
@@ -124,6 +126,8 @@ src/
 supabase/
   schema.sql        Tables, triggers, RLS policies — run this first
   seed.sql          The 235 starter containers — run this second (optional)
+  functions/
+    extract-invoice  Reads a delivery-photo for candidate fields (optional, see SETUP.md)
 ```
 
 The important design decision: **`src/lib/api.ts` is the only module that knows

@@ -3,6 +3,7 @@ import {
   Beaker,
   Building2,
   CalendarDays,
+  Camera,
   CircleSlash,
   Copy,
   ExternalLink,
@@ -16,6 +17,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
+import { resolveDeliveryPhotoUrl } from '../lib/deliveryPhoto'
 import * as pubchem from '../lib/pubchem'
 import { qrDataUrl } from '../lib/qr'
 import { STATUS_LABEL, type Chemical } from '../lib/types'
@@ -59,17 +61,26 @@ export function ChemicalDrawer({
 
   const [qr, setQr] = useState<string | null>(null)
   const [info, setInfo] = useState<pubchem.PubChemInfo | null>(null)
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     setQr(null)
     setInfo(null)
+    setPhotoUrl(null)
     if (!chemical) return
 
     let live = true
     void qrDataUrl(chemical.code, 220).then((url) => live && setQr(url))
     void pubchem.lookup(chemical.cas, chemical.name).then((res) => live && setInfo(res))
+    if (chemical.delivery_photo_path) {
+      void resolveDeliveryPhotoUrl(chemical.delivery_photo_path)
+        .then((url) => live && setPhotoUrl(url))
+        .catch(() => {
+          /* private bucket, no session, or the file's gone — just skip the preview */
+        })
+    }
     return () => {
       live = false
     }
@@ -284,6 +295,26 @@ export function ChemicalDrawer({
                 <Suspense fallback={<Spinner className="h-5 w-5 text-ink-300" />}>
                   <LazyReactionViewer rxnfile={c.reaction_rxnfile} />
                 </Suspense>
+              </div>
+            </div>
+          )}
+
+          {/* delivery photo -------------------------------------------------- */}
+          {c.delivery_photo_path && (
+            <div className="card p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-400">
+                <Camera className="h-3.5 w-3.5" /> Delivery photo
+              </p>
+              <div className="flex min-h-[100px] items-center justify-center overflow-hidden rounded bg-ink-50 dark:bg-ink-900">
+                {photoUrl ? (
+                  <img
+                    src={photoUrl}
+                    alt="Delivery order"
+                    className="max-h-64 w-auto object-contain"
+                  />
+                ) : (
+                  <Spinner className="h-5 w-5 text-ink-300" />
+                )}
               </div>
             </div>
           )}
