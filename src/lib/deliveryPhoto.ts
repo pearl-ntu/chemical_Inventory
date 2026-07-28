@@ -111,9 +111,29 @@ export async function extractInvoiceFields(file: File): Promise<ExtractedFields>
   const { data, error } = await sb.functions.invoke('extract-invoice', {
     body: { image: base64, mediaType: 'image/jpeg' },
   })
-  if (error) throw new ApiError(`Could not read the photo: ${error.message}`)
+  if (error) throw new ApiError(`Could not read the photo: ${await describeFunctionsError(error)}`)
   if (data?.error) throw new ApiError(data.error)
   return (data?.fields ?? {}) as ExtractedFields
+}
+
+/**
+ * supabase-js's own `error.message` for a failed function call is always the
+ * same generic "Edge Function returned a non-2xx status code" — it never
+ * surfaces what the function actually said. The real reason is in
+ * `error.context`, the raw Response, whose body is the `{ error: "..." }`
+ * this function's own error handler wrote.
+ */
+async function describeFunctionsError(error: unknown): Promise<string> {
+  const context = (error as { context?: unknown } | null)?.context
+  if (context instanceof Response) {
+    try {
+      const body = await context.clone().json()
+      if (typeof body?.error === 'string') return body.error
+    } catch {
+      // Body wasn't JSON (e.g. a gateway error page) — fall through.
+    }
+  }
+  return error instanceof Error ? error.message : 'Unknown error.'
 }
 
 /** Narrowing helper so callers don't need to null-check `supabase` again. */
