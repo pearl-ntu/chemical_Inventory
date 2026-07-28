@@ -81,6 +81,26 @@ export default function InventoryPage() {
     }
   }, [params, chemicals, setParams, toast])
 
+  // Deep link from a dashboard tile/queue: ?status=low&hazard=Flammable&q=...
+  // presets the filter panel instead of opening a single record.
+  useEffect(() => {
+    const status = params.get('status')
+    const hazard = params.get('hazard')
+    const q = params.get('q')
+    if (!status && !hazard && !q) return
+    const validStatuses = status
+      ? status.split(',').filter((s): s is Status => (STATUSES as string[]).includes(s))
+      : []
+    setFilters((f) => ({
+      ...f,
+      ...(status ? { status: validStatuses } : {}),
+      ...(hazard ? { hazard: hazard.split(',') } : {}),
+      ...(q ? { q } : {}),
+    }))
+    setParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const options = useMemo(
     () => ({
       location: uniqueSorted(chemicals.map((c) => c.location)),
