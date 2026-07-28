@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useCooldown } from '../lib/useCooldown'
 import {
   AlertTriangle,
   ArrowRight,
@@ -55,6 +56,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [linkSent, setLinkSent] = useState(false)
+  const sendCooldown = useCooldown()
   const [useCode, setUseCode] = useState(false)
   const [code, setCode] = useState('')
   const [verifyingCode, setVerifyingCode] = useState(false)
@@ -109,6 +111,7 @@ export default function LoginPage() {
     try {
       await auth.sendMagicLink(email)
       setLinkSent(true)
+      sendCooldown.start('magic-link')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send the link. Please try again.')
     } finally {
@@ -456,9 +459,17 @@ export default function LoginPage() {
                     {verifyingCode ? <Spinner /> : <KeyRound className="h-4 w-4" />} Verify code
                   </button>
                 ) : (
-                  <SpecularButton type="submit" className="w-full" size="md" disabled={busy} {...BRAND_SHINE}>
+                  <SpecularButton
+                    type="submit"
+                    className="w-full"
+                    size="md"
+                    disabled={busy || sendCooldown.secondsLeft('magic-link') > 0}
+                    {...BRAND_SHINE}
+                  >
                     {busy ? <Spinner /> : <MailCheck className="h-4 w-4" />}
-                    Send me a sign-in link
+                    {sendCooldown.secondsLeft('magic-link') > 0
+                      ? `Wait ${sendCooldown.secondsLeft('magic-link')}s before sending another`
+                      : 'Send me a sign-in link'}
                   </SpecularButton>
                 )}
 

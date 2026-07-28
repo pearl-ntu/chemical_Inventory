@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext'
 import { api, auth } from '../lib/api'
 import { MODE } from '../lib/config'
 import type { Invite, Profile, Role } from '../lib/types'
+import { useCooldown } from '../lib/useCooldown'
 import { formatDate, formatRelative } from '../lib/utils'
 
 const ROLE_HELP: Record<Role, string> = {
@@ -27,6 +28,12 @@ export default function MembersPage() {
   const [inviteName, setInviteName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
+
+  // Resending the same invite too soon in a row is exactly what triggers a
+  // receiving mail server to throttle the sender — a burst reads as spammy
+  // even though it's the same one email each time. A visible cooldown stops
+  // that click-it-again reflex instead of just quietly failing later.
+  const resendCooldown = useCooldown()
 
   function load() {
     return Promise.all([api.listProfiles(), api.listInvites()]).then(([m, i]) => {
@@ -91,6 +98,7 @@ export default function MembersPage() {
     try {
       await auth.inviteMember(inv.email, inv.full_name ?? '')
       toast.success(`Invite re-sent to ${inv.email}.`)
+      resendCooldown.start(inv.id)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not resend that invite.')
     } finally {
@@ -225,11 +233,18 @@ export default function MembersPage() {
                 <div className="flex shrink-0 gap-2">
                   <button
                     className="btn-secondary py-1.5"
-                    disabled={saving === inv.id}
+                    disabled={saving === inv.id || resendCooldown.secondsLeft(inv.id) > 0}
                     onClick={() => void resend(inv)}
-                    title="Send the sign-in email again"
+                    title={
+                      resendCooldown.secondsLeft(inv.id) > 0
+                        ? 'Sending it again this soon is what makes a mail server start throttling it'
+                        : 'Send the sign-in email again'
+                    }
                   >
-                    {saving === inv.id ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />} Resend
+                    {saving === inv.id ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
+                    {resendCooldown.secondsLeft(inv.id) > 0
+                      ? `Resend in ${resendCooldown.secondsLeft(inv.id)}s`
+                      : 'Resend'}
                   </button>
                   <button
                     className="btn-ghost py-1.5 text-ink-500"
