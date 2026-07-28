@@ -176,23 +176,6 @@ export default function LoginPage() {
           the headline's position constant regardless of viewport height;
           only the footer needs to track the bottom, via margin-top auto. */}
       <div className="relative hidden overflow-hidden bg-[#0b1830] lg:flex lg:flex-col lg:p-12">
-        {/* A quiet dot grid that bulges away from the cursor — the panel's
-            only interactive flourish, sitting behind everything else so it
-            reads as ambient texture, not a competing focal point. A separate
-            wrapper, not a className on DotField itself: its own CSS already
-            sets `position: relative`, and fighting that with `absolute` on
-            the very same element is a stylesheet-order coin flip. */}
-        <div className="absolute inset-0">
-          <DotField
-            dotRadius={1.3}
-            dotSpacing={18}
-            bulgeStrength={45}
-            glowRadius={200}
-            gradientFrom="rgba(91, 144, 250, 0.3)"
-            gradientTo="rgba(24, 47, 104, 0.18)"
-            glowColor="#5b90fa"
-          />
-        </div>
         {/* The mark itself, bled off the corner — the one deliberate
             flourish, everything else on this panel stays quiet. Sized and
             positioned with real clearance under the headline below, checked
@@ -205,6 +188,26 @@ export default function LoginPage() {
               'radial-gradient(120% 90% at 15% 100%, rgba(11,24,48,0) 0%, #0b1830 65%)',
           }}
         />
+
+        {/* A quiet dot grid that bulges away from the cursor. Painted AFTER
+            the fade above, not before — that gradient is opaque #0b1830
+            almost everywhere (it only needs to be transparent right at the
+            logo's corner), so anything sitting under it is invisible outside
+            a sliver near the bottom-left. A separate wrapper, not a
+            className on DotField itself: its own CSS already sets
+            `position: relative`, and fighting that with `absolute` on the
+            very same element is a stylesheet-order coin flip. */}
+        <div className="absolute inset-0">
+          <DotField
+            dotRadius={1.3}
+            dotSpacing={18}
+            bulgeStrength={45}
+            glowRadius={200}
+            gradientFrom="rgba(91, 144, 250, 0.3)"
+            gradientTo="rgba(24, 47, 104, 0.18)"
+            glowColor="#5b90fa"
+          />
+        </div>
 
         <div className="relative flex items-center gap-3">
           <Logo className="h-9 w-9" />
