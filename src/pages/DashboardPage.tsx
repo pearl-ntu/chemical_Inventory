@@ -308,7 +308,7 @@ export default function DashboardPage() {
 
       {/* KPI strip — one bordered surface, five equal columns, never wraps */}
       <div className="mt-4 animate-slide-up" style={stagger(1)}>
-        <div className="card grid grid-cols-2 divide-y divide-ink-100 p-0 sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:grid-cols-5 dark:divide-ink-800">
+        <div className="card grid grid-cols-2 divide-y divide-ink-100 p-0 sm:grid-cols-3 sm:divide-x sm:divide-y-0 xl:grid-cols-5 dark:divide-ink-800">
           <Kpi
             label="In stock"
             value={stats.active.length}
@@ -329,29 +329,29 @@ export default function DashboardPage() {
           <Kpi
             label="Expiring soon"
             value={stats.expiring.length}
-            sub={stats.expiring.length ? 'within the next 3 months' : 'nothing in the next 3 months'}
+            sub={stats.expiring.length ? 'within the next 3 months' : 'nothing in 3 months'}
             tone={stats.expiringUrgent.length ? 'critical' : stats.expiring.length ? 'warning' : 'good'}
             onClick={() => jumpToAttention('expiring')}
           />
           <Kpi
-            label="Held more than once"
+            label="Duplicates"
             value={stats.duplicates.length}
-            sub={stats.duplicates.length ? 'same CAS, check before reordering' : 'no repeat holdings'}
+            sub={stats.duplicates.length ? 'check before reordering' : 'no repeat holdings'}
             tone={stats.duplicates.length ? 'info' : 'good'}
             onClick={() => jumpToAttention('duplicate')}
           />
           <Kpi
             label="Suppliers"
             value={stats.suppliers}
-            sub="distinct vendors on record"
+            sub="distinct vendors"
             onClick={() => navigate('/analytics')}
           />
         </div>
       </div>
 
       {/* rail + main workspace ------------------------------------------------ */}
-      <div className="mt-4 flex flex-col gap-4 lg:flex-row">
-        <div className="animate-slide-up lg:w-[248px] lg:shrink-0" style={stagger(2)}>
+      <div className="mt-4 flex flex-col gap-4 xl:flex-row">
+        <div className="animate-slide-up xl:w-[248px] xl:shrink-0" style={stagger(2)}>
           <InventoryControlRail
             counts={{
               low: stats.low.length,
@@ -369,7 +369,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="min-w-0 flex-1 space-y-4">
-          <div className="grid animate-slide-up gap-4 lg:grid-cols-[1.85fr_1fr]" style={stagger(3)}>
+          <div className="grid animate-slide-up gap-4 xl:grid-cols-[1.85fr_1fr]" style={stagger(3)}>
             {/* storage coverage ------------------------------------------------ */}
             <section className="card p-4">
               <h2 className="text-sm font-bold text-ink-900 dark:text-ink-50">Storage coverage</h2>
@@ -377,26 +377,34 @@ export default function DashboardPage() {
                 How containers are spread across locations, and where stock is thin.
               </p>
 
-              <div className="mt-4 grid gap-5 sm:grid-cols-[168px_1fr]">
-                <Donut
-                  centerValue={chemicals.length}
-                  centerLabel="containers"
-                  data={[
-                    { label: 'In stock', value: stats.active.length, color: 'var(--viz-good)' },
-                    { label: 'Running low', value: stats.low.length, color: 'var(--viz-warning)' },
-                    {
-                      label: 'Empty',
-                      value: chemicals.filter((c) => c.status === 'empty').length,
-                      color: 'var(--viz-neutral)',
-                    },
-                    {
-                      label: 'Disposed',
-                      value: chemicals.filter((c) => c.status === 'disposed').length,
-                      color: 'var(--viz-critical)',
-                    },
-                  ]}
-                />
-                <div>
+              {/* Deliberately stacked, not side-by-side: this column's actual
+                  rendered width depends on the rail+analytical-row split
+                  above, not the viewport directly, so a viewport breakpoint
+                  here can't know whether there's really room — that's
+                  exactly what squeezed location names down to "Fridg…"
+                  before. */}
+              <div className="mt-4">
+                <div className="mx-auto w-full max-w-[220px]">
+                  <Donut
+                    centerValue={chemicals.length}
+                    centerLabel="containers"
+                    data={[
+                      { label: 'In stock', value: stats.active.length, color: 'var(--viz-good)' },
+                      { label: 'Running low', value: stats.low.length, color: 'var(--viz-warning)' },
+                      {
+                        label: 'Empty',
+                        value: chemicals.filter((c) => c.status === 'empty').length,
+                        color: 'var(--viz-neutral)',
+                      },
+                      {
+                        label: 'Disposed',
+                        value: chemicals.filter((c) => c.status === 'disposed').length,
+                        color: 'var(--viz-critical)',
+                      },
+                    ]}
+                  />
+                </div>
+                <div className="mt-5">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-400">
                       Where things are kept
