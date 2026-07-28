@@ -199,13 +199,13 @@ export default function LoginPage() {
             very same element is a stylesheet-order coin flip. */}
         <div className="absolute inset-0">
           <DotField
-            dotRadius={1.3}
-            dotSpacing={18}
+            dotRadius={2}
+            dotSpacing={17}
             bulgeStrength={45}
             glowRadius={200}
-            gradientFrom="rgba(91, 144, 250, 0.3)"
-            gradientTo="rgba(24, 47, 104, 0.18)"
-            glowColor="#5b90fa"
+            gradientFrom="rgba(184, 209, 255, 0.65)"
+            gradientTo="rgba(91, 144, 250, 0.4)"
+            glowColor="#8ab3ff"
           />
         </div>
 
