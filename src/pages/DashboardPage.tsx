@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Check,
@@ -349,27 +349,28 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* rail + main workspace ------------------------------------------------ */}
-      <div className="mt-4 flex flex-col gap-4 xl:flex-row">
-        <div className="animate-slide-up xl:w-[248px] xl:shrink-0" style={stagger(2)}>
-          <InventoryControlRail
-            counts={{
-              low: stats.low.length,
-              expiring: stats.expiring.length,
-              duplicate: stats.duplicates.length,
-              noLocation: stats.noLocation.length,
-              noCas: stats.noCas.length,
-              noHazard: stats.noHazard.length,
-            }}
-            topHazards={stats.topHazards}
-            category={category}
-            onCategory={jumpToAttention}
-            onHazard={(h) => navigate(`/inventory?hazard=${encodeURIComponent(h)}`)}
-          />
-        </div>
+      {/* control toolbar — saved views, cleanup queues, and hazard-class
+          lenses in one horizontal strip, so the page stays full-width below
+          instead of losing a column to a permanent side rail */}
+      <div className="mt-4 animate-slide-up" style={stagger(2)}>
+        <ControlToolbar
+          counts={{
+            low: stats.low.length,
+            expiring: stats.expiring.length,
+            duplicate: stats.duplicates.length,
+            noLocation: stats.noLocation.length,
+            noCas: stats.noCas.length,
+            noHazard: stats.noHazard.length,
+          }}
+          topHazards={stats.topHazards}
+          category={category}
+          onCategory={jumpToAttention}
+          onHazard={(h) => navigate(`/inventory?hazard=${encodeURIComponent(h)}`)}
+        />
+      </div>
 
-        <div className="min-w-0 flex-1 space-y-4">
-          <div className="grid animate-slide-up gap-4 xl:grid-cols-[1.85fr_1fr]" style={stagger(3)}>
+      <div className="space-y-4">
+          <div className="mt-4 grid animate-slide-up gap-4 lg:grid-cols-[1.85fr_1fr]" style={stagger(3)}>
             {/* storage coverage ------------------------------------------------ */}
             <section className="card p-4">
               <h2 className="text-sm font-bold text-ink-900 dark:text-ink-50">Storage coverage</h2>
@@ -662,14 +663,13 @@ export default function DashboardPage() {
             </section>
           )}
 
-          {attentionCount === 0 && (
-            <p className="flex items-center gap-2 text-xs text-ink-400">
-              <Sparkles className="h-3.5 w-3.5" />
-              Nothing needs your attention right now — mark a bottle “Running low” from its detail
-              panel and it'll show up here the moment it does.
-            </p>
-          )}
-        </div>
+        {attentionCount === 0 && (
+          <p className="flex items-center gap-2 text-xs text-ink-400">
+            <Sparkles className="h-3.5 w-3.5" />
+            Nothing needs your attention right now — mark a bottle “Running low” from its detail
+            panel and it'll show up here the moment it does.
+          </p>
+        )}
       </div>
 
       <ChemicalDrawer
@@ -768,6 +768,33 @@ function AttentionBanner({
   )
 }
 
+/** Counts up from 0 on mount instead of snapping straight to the final
+ *  value — the one animation that reliably makes a stat card feel alive
+ *  rather than a static label. Skipped entirely for non-numeric values. */
+function AnimatedNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(0)
+  const raf = useRef(0)
+
+  useEffect(() => {
+    const start = performance.now()
+    const duration = 700
+    const from = 0
+    const to = value
+
+    function tick(now: number) {
+      const t = Math.min((now - start) / duration, 1)
+      const eased = 1 - (1 - t) * (1 - t) // ease-out
+      setDisplay(Math.round(from + (to - from) * eased))
+      if (t < 1) raf.current = requestAnimationFrame(tick)
+    }
+    raf.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+
+  return <>{display}</>
+}
+
 /** One KPI cell inside the shared bordered strip — no card of its own, the
  *  strip is the card, so five of these read as one instrument, not five. */
 function Kpi({
@@ -794,59 +821,33 @@ function Kpi({
   return (
     <button
       onClick={onClick}
-      className="flex min-h-[110px] flex-col justify-center px-5 py-4 text-left transition-colors hover:bg-ink-50 dark:hover:bg-ink-800/50"
+      className="group flex min-h-[110px] flex-col justify-center px-5 py-4 text-left transition-all duration-150 hover:z-10 hover:-translate-y-0.5 hover:bg-ink-50 hover:shadow-pop dark:hover:bg-ink-800/50"
     >
       <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">{label}</p>
-      <p className={cx('mt-1.5 text-[22px] font-bold leading-none tabular-nums', valueTone)}>{value}</p>
+      <p className={cx('mt-1.5 text-[22px] font-bold leading-none tabular-nums', valueTone)}>
+        {typeof value === 'number' ? <AnimatedNumber value={value} /> : value}
+      </p>
       <p className="mt-1.5 truncate text-xs text-ink-500 dark:text-ink-400">{sub}</p>
     </button>
   )
 }
 
-function RailSection({ label, children, last }: { label: string; children: ReactNode; last?: boolean }) {
-  return (
-    <div className={cx('p-3', !last && 'border-b border-ink-100 dark:border-ink-800')}>
-      <p className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400">
-        {label}
-      </p>
-      <div className="space-y-0.5">{children}</div>
-    </div>
-  )
-}
+const TOOLBAR_PILLS: Array<[IssueCategory, string]> = [
+  ['all', 'Overview'],
+  ['low', 'Running low'],
+  ['expiring', 'Expiring soon'],
+  ['duplicate', 'Held twice'],
+  ['no-location', 'No location'],
+  ['no-cas', 'No CAS'],
+  ['no-hazard', 'No hazard'],
+]
 
-function RailRow({
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  label: string
-  count?: number
-  active?: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cx(
-        'flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-        active
-          ? 'bg-pearl-50 font-medium text-pearl-800 dark:bg-pearl-500/10 dark:text-pearl-300'
-          : 'text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-800',
-      )}
-    >
-      <span className="min-w-0 truncate">{label}</span>
-      {count != null && (
-        <span className="shrink-0 text-xs tabular-nums text-ink-400">{count}</span>
-      )}
-    </button>
-  )
-}
-
-/** The "Inventory control" left rail — saved views and cleanup queues used
- *  during a weekly stock check, mirroring the same category filter the
- *  attention table below uses so every row here scopes it identically. */
-function InventoryControlRail({
+/** Replaces what used to be a permanent left-hand rail: the same saved
+ *  views and cleanup queues, as one horizontal strip near the page title
+ *  instead of a column eating width from every panel below it. Hazard-class
+ *  lenses sit on the right since they jump to Inventory rather than
+ *  filtering the scope in place. */
+function ControlToolbar({
   counts,
   topHazards,
   category,
@@ -866,68 +867,67 @@ function InventoryControlRail({
   onCategory: (c: IssueCategory) => void
   onHazard: (h: string) => void
 }) {
+  const countFor: Record<IssueCategory, number | undefined> = {
+    all: undefined,
+    low: counts.low,
+    expiring: counts.expiring,
+    duplicate: counts.duplicate,
+    'no-location': counts.noLocation,
+    'no-cas': counts.noCas,
+    'no-hazard': counts.noHazard,
+  }
+
   return (
-    <aside className="card overflow-hidden p-0">
-      <div className="border-b border-ink-100 p-4 dark:border-ink-800">
-        <h2 className="text-sm font-bold text-ink-900 dark:text-ink-50">Inventory control</h2>
-        <p className="mt-1 text-xs leading-snug text-ink-500 dark:text-ink-400">
-          Saved review scopes and cleanup queues for the weekly stock check.
-        </p>
+    <div className="card flex flex-wrap items-center gap-x-4 gap-y-2 p-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
+        {TOOLBAR_PILLS.map(([key, label]) => {
+          const count = countFor[key]
+          const active = category === key
+          return (
+            <button
+              key={key}
+              onClick={() => onCategory(key)}
+              className={cx(
+                'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                active
+                  ? 'bg-pearl-600 text-white'
+                  : 'text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800',
+              )}
+            >
+              {label}
+              {count != null && (
+                <span
+                  className={cx(
+                    'rounded-full px-1.5 text-[11px] tabular-nums',
+                    active ? 'bg-white/20' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400',
+                  )}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
-      <RailSection label="Views">
-        <RailRow label="Overview" active={category === 'all'} onClick={() => onCategory('all')} />
-        <RailRow
-          label="Running low"
-          count={counts.low}
-          active={category === 'low'}
-          onClick={() => onCategory('low')}
-        />
-        <RailRow
-          label="Expiring soon"
-          count={counts.expiring}
-          active={category === 'expiring'}
-          onClick={() => onCategory('expiring')}
-        />
-        <RailRow
-          label="Held more than once"
-          count={counts.duplicate}
-          active={category === 'duplicate'}
-          onClick={() => onCategory('duplicate')}
-        />
-      </RailSection>
-
-      <RailSection label="Coverage lenses">
-        {topHazards.length === 0 ? (
-          <p className="px-2 py-1.5 text-xs text-ink-400">Nothing tagged yet.</p>
-        ) : (
-          topHazards.map(([h, n]) => (
-            <RailRow key={h} label={h} count={n} onClick={() => onHazard(h)} />
-          ))
-        )}
-      </RailSection>
-
-      <RailSection label="Queues" last>
-        <RailRow
-          label="No location assigned"
-          count={counts.noLocation}
-          active={category === 'no-location'}
-          onClick={() => onCategory('no-location')}
-        />
-        <RailRow
-          label="No CAS number"
-          count={counts.noCas}
-          active={category === 'no-cas'}
-          onClick={() => onCategory('no-cas')}
-        />
-        <RailRow
-          label="No hazard tagged"
-          count={counts.noHazard}
-          active={category === 'no-hazard'}
-          onClick={() => onCategory('no-hazard')}
-        />
-      </RailSection>
-    </aside>
+      {topHazards.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+            Lenses
+          </span>
+          {topHazards.map(([h, n]) => (
+            <button
+              key={h}
+              onClick={() => onHazard(h)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 px-2.5 py-1 text-xs text-ink-600 transition-colors hover:border-pearl-300 hover:bg-pearl-50 dark:border-ink-700 dark:text-ink-300 dark:hover:border-pearl-600 dark:hover:bg-pearl-500/10"
+            >
+              {h}
+              <span className="text-ink-400">{n}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1007,10 +1007,10 @@ function AttentionTable({ rows, onOpen }: { rows: AttentionRow[]; onOpen: (id: s
           {rows.slice(0, 20).map((row) => (
             <tr
               key={row.key}
-              className="cursor-pointer transition-colors hover:bg-ink-50 dark:hover:bg-ink-800/50"
+              className="group cursor-pointer transition-colors hover:bg-ink-50 dark:hover:bg-ink-800/50"
               onClick={() => onOpen(row.chemical.id)}
             >
-              <td className="max-w-[16rem] truncate px-4 py-2.5 text-sm font-medium text-ink-800 dark:text-ink-100">
+              <td className="max-w-[16rem] truncate px-4 py-2.5 text-sm font-medium text-ink-800 transition-transform duration-150 group-hover:translate-x-1 dark:text-ink-100">
                 {row.chemical.name}
               </td>
               <td className="max-w-[10rem] truncate px-4 py-2.5 text-sm text-ink-500 dark:text-ink-400">

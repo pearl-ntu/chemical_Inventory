@@ -52,11 +52,16 @@ export default {
           '0%': { transform: 'translateX(100%)' },
           '100%': { transform: 'translateX(0)' },
         },
+        'draw-line': {
+          '0%': { strokeDashoffset: '1' },
+          '100%': { strokeDashoffset: '0' },
+        },
       },
       animation: {
         'fade-in': 'fade-in .2s ease-out',
         'slide-up': 'slide-up .25s cubic-bezier(.16,1,.3,1)',
         'slide-in-right': 'slide-in-right .28s cubic-bezier(.16,1,.3,1)',
+        'draw-line': 'draw-line 1s ease-out forwards',
       },
     },
   },

@@ -277,6 +277,9 @@ export function Timeline({
           strokeLinecap="round"
           strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
+          pathLength={1}
+          className="animate-draw-line"
+          style={{ strokeDasharray: 1 }}
         />
 
         {active != null && (
