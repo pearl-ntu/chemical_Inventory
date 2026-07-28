@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { CheckCircle2, Eraser, ExternalLink, HelpCircle, Search } from 'lucide-react'
 import { CanvasMoleculeEditor, type CanvasEditorOnChangeMolecule } from 'react-ocl'
+import { Molecule } from 'openchemlib'
 import * as pubchem from '../lib/pubchem'
 import { Modal, Spinner } from './ui'
 
@@ -17,6 +18,15 @@ type PubChemSearchState =
   | { status: 'searching' }
   | { status: 'found'; info: pubchem.PubChemInfo }
   | { status: 'not-found' }
+
+function moleculeFromMolfile(molfile: string | null | undefined): Molecule | null {
+  if (!molfile) return null
+  try {
+    return Molecule.fromMolfile(molfile)
+  } catch {
+    return null
+  }
+}
 
 /**
  * A real 2D structure editor, not a toy — atoms, bond orders, ring templates,
@@ -46,19 +56,19 @@ export function StructureEditorDialog({
 
   function handleConfirm() {
     const change = latestChange.current
-    if (!change) return onClose()
-    const molecule = change.getMolecule()
+    const molecule = change?.getMolecule() ?? moleculeFromMolfile(initialMolfile)
+    if (!molecule) return onClose()
     const formulaInfo = molecule.getMolecularFormula()
     onConfirm({
-      molfile: change.getMolfileV3(),
-      smiles: change.getSmiles(),
+      molfile: change?.getMolfileV3() ?? molecule.toMolfileV3(),
+      smiles: change?.getSmiles() ?? molecule.toSmiles(),
       formula: formulaInfo.formula,
       molWeight: Math.round(formulaInfo.relativeWeight * 100) / 100,
     })
   }
 
   async function searchPubChem() {
-    const smiles = latestChange.current?.getSmiles()
+    const smiles = latestChange.current?.getSmiles() ?? moleculeFromMolfile(initialMolfile)?.toSmiles()
     if (!smiles) return
     setSearch({ status: 'searching' })
     try {

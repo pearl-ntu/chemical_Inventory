@@ -746,6 +746,15 @@ export function ChemicalForm({
                     Literature
                     <ExternalLink className="h-3 w-3 opacity-60" />
                   </a>
+                  <a
+                    href={pubchem.patentSynthesisSearchUrl(form.name, form.cas)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="btn-secondary shrink-0"
+                  >
+                    Patents
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </a>
                 </>
               )}
               <button

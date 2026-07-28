@@ -41,8 +41,9 @@ export function ReactionEditorDialog({
 
   function handleConfirm() {
     const change = latestChange.current
-    if (!change) return onClose()
-    onConfirm(change.getRxnV3())
+    const rxnfile = change?.getRxnV3() ?? seededRxnfile
+    if (!rxnfile) return onClose()
+    onConfirm(rxnfile)
   }
 
   return (

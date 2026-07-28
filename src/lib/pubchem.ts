@@ -199,3 +199,8 @@ export function scholarSynthesisSearchUrl(name: string, cas: string | null): str
   const terms = [name, cas, 'synthesis'].filter(Boolean).join(' ')
   return `https://scholar.google.com/scholar?q=${encodeURIComponent(terms)}`
 }
+
+export function patentSynthesisSearchUrl(name: string, cas: string | null): string {
+  const terms = [name, cas, 'synthesis preparation'].filter(Boolean).join(' ')
+  return `https://patents.google.com/?q=${encodeURIComponent(terms)}`
+}
