@@ -11,7 +11,9 @@ import {
   MailCheck,
   User,
 } from 'lucide-react'
+import { DotField } from '../components/DotField'
 import { Logo, NtuBadge } from '../components/Logo'
+import { SpecularButton } from '../components/SpecularButton'
 import { Field, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -21,6 +23,19 @@ import { cx } from '../lib/utils'
 
 type Tab = 'signin' | 'signup'
 type Method = 'magic' | 'password'
+
+/** A solid pearl-600 button with a pearl-toned shine — the app's one WebGL
+ * flourish, reserved for the login page's primary call to action. */
+const BRAND_SHINE = {
+  radius: 8,
+  tint: '#2457d6',
+  tintOpacity: 1,
+  textColor: '#ffffff',
+  lineColor: '#b8d1ff',
+  baseColor: '#1a3a89',
+  intensity: 1,
+  proximity: 200,
+} as const
 
 export default function LoginPage() {
   const { signIn, signUp } = useAuth()
@@ -161,6 +176,23 @@ export default function LoginPage() {
           the headline's position constant regardless of viewport height;
           only the footer needs to track the bottom, via margin-top auto. */}
       <div className="relative hidden overflow-hidden bg-[#0b1830] lg:flex lg:flex-col lg:p-12">
+        {/* A quiet dot grid that bulges away from the cursor — the panel's
+            only interactive flourish, sitting behind everything else so it
+            reads as ambient texture, not a competing focal point. A separate
+            wrapper, not a className on DotField itself: its own CSS already
+            sets `position: relative`, and fighting that with `absolute` on
+            the very same element is a stylesheet-order coin flip. */}
+        <div className="absolute inset-0">
+          <DotField
+            dotRadius={1.3}
+            dotSpacing={18}
+            bulgeStrength={45}
+            glowRadius={200}
+            gradientFrom="rgba(91, 144, 250, 0.3)"
+            gradientTo="rgba(24, 47, 104, 0.18)"
+            glowColor="#5b90fa"
+          />
+        </div>
         {/* The mark itself, bled off the corner — the one deliberate
             flourish, everything else on this panel stays quiet. Sized and
             positioned with real clearance under the headline below, checked
@@ -421,10 +453,10 @@ export default function LoginPage() {
                     {verifyingCode ? <Spinner /> : <KeyRound className="h-4 w-4" />} Verify code
                   </button>
                 ) : (
-                  <button type="submit" className="btn-primary w-full" disabled={busy}>
+                  <SpecularButton type="submit" className="w-full" size="md" disabled={busy} {...BRAND_SHINE}>
                     {busy ? <Spinner /> : <MailCheck className="h-4 w-4" />}
                     Send me a sign-in link
-                  </button>
+                  </SpecularButton>
                 )}
 
                 <button
@@ -507,11 +539,11 @@ export default function LoginPage() {
               {error && <ErrorBanner message={error} />}
               {notice && <NoticeBanner message={notice} />}
 
-              <button type="submit" className="btn-primary w-full" disabled={busy}>
+              <SpecularButton type="submit" className="w-full" size="md" disabled={busy} {...BRAND_SHINE}>
                 {busy ? <Spinner /> : null}
                 {tab === 'signin' ? 'Sign in' : 'Create account'}
                 {!busy && <ArrowRight className="h-4 w-4" />}
-              </button>
+              </SpecularButton>
 
               {tab === 'signin' && MODE === 'cloud' && (
                 <button
