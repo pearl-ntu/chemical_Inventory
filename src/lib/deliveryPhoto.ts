@@ -3,6 +3,13 @@
  * for reference — and an optional, always-user-confirmed reading of its
  * fields. Nothing here ever writes to the registration form on its own;
  * every caller gets back plain data and decides what to do with it.
+ *
+ * Reading the fields runs entirely on-device (Tesseract.js OCR + pattern
+ * matching) rather than calling a paid AI vision API — free, works offline,
+ * and works in demo mode too, at the cost of only reliably catching
+ * structured patterns (a CAS number, a price, a pack size) rather than
+ * free-text fields like the chemical name, which OCR has no way to tell
+ * apart from the supplier's letterhead or address block.
  */
 import { ApiError } from './api'
 import { IS_CLOUD } from './config'
@@ -78,62 +85,68 @@ export async function resolveDeliveryPhotoUrl(path: string): Promise<string> {
   return data.signedUrl
 }
 
-/** Exactly the fields the extraction tool is allowed to return — see the
- *  matching tool schema in supabase/functions/extract-invoice. */
+/** Only the fields on-device OCR can plausibly find — a distinctive enough
+ *  pattern to pick out of a wall of raw recognized text with confidence. A
+ *  free-text field like `name` or `supplier` has no such pattern, so it's
+ *  deliberately not attempted rather than guessed and often wrong. */
 export interface ExtractedFields {
-  name?: string
   cas?: string
-  supplier?: string
-  catalog_no?: string
   quantity?: number
   size_value?: number
   size_unit?: string
-  purity?: string
   price?: number
   currency?: string
-  system?: string
 }
 
+const SIZE_UNITS = ['kg', 'mg', 'g', 'mL', 'µL', 'L', 'mmol', 'mol', 'units'] as const
+const CURRENCY_SYMBOLS: Record<string, string> = { $: 'USD', '€': 'EUR', '£': 'GBP', S$: 'SGD' }
+
 /**
- * Sends the photo to the extract-invoice Edge Function and returns whatever
- * fields it could read — nothing here touches the registration form. The
+ * Runs OCR on the photo and pattern-matches a handful of structured fields
+ * out of the raw text — nothing here touches the registration form. The
  * caller shows these as a checklist for the person to confirm first.
  */
 export async function extractInvoiceFields(file: File): Promise<ExtractedFields> {
-  if (!IS_CLOUD) {
-    throw new ApiError('Reading a photo needs the shared cloud database. In demo mode, fill the fields in by hand.')
-  }
-  const sb = requireSupabase()
+  const { createWorker } = await import('tesseract.js')
   const compressed = await compressImage(file)
-  const dataUrl = await blobToDataUrl(compressed)
-  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
 
-  const { data, error } = await sb.functions.invoke('extract-invoice', {
-    body: { image: base64, mediaType: 'image/jpeg' },
-  })
-  if (error) throw new ApiError(`Could not read the photo: ${await describeFunctionsError(error)}`)
-  if (data?.error) throw new ApiError(data.error)
-  return (data?.fields ?? {}) as ExtractedFields
-}
-
-/**
- * supabase-js's own `error.message` for a failed function call is always the
- * same generic "Edge Function returned a non-2xx status code" — it never
- * surfaces what the function actually said. The real reason is in
- * `error.context`, the raw Response, whose body is the `{ error: "..." }`
- * this function's own error handler wrote.
- */
-async function describeFunctionsError(error: unknown): Promise<string> {
-  const context = (error as { context?: unknown } | null)?.context
-  if (context instanceof Response) {
-    try {
-      const body = await context.clone().json()
-      if (typeof body?.error === 'string') return body.error
-    } catch {
-      // Body wasn't JSON (e.g. a gateway error page) — fall through.
-    }
+  const worker = await createWorker('eng')
+  let text: string
+  try {
+    const result = await worker.recognize(compressed)
+    text = result.data.text
+  } finally {
+    await worker.terminate()
   }
-  return error instanceof Error ? error.message : 'Unknown error.'
+
+  const fields: ExtractedFields = {}
+
+  // CAS registry numbers have a distinctive, near-unambiguous shape —
+  // 2-7 digits, a hyphen, 2 digits, a hyphen, 1 check digit.
+  const cas = text.match(/\b\d{2,7}-\d{2}-\d\b/)
+  if (cas) fields.cas = cas[0]
+
+  // A pack size: a number immediately followed by a known unit.
+  const size = text.match(new RegExp(`\\b(\\d+(?:\\.\\d+)?)\\s?(${SIZE_UNITS.join('|')})\\b`, 'i'))
+  if (size) {
+    fields.size_value = Number(size[1])
+    fields.size_unit = SIZE_UNITS.find((u) => u.toLowerCase() === size[2].toLowerCase())
+  }
+
+  // A price: a currency symbol/code immediately before or after an amount.
+  const price = text.match(/(SGD|USD|S\$|US\$|[$€£])\s?([\d,]+\.\d{2})\b/i)
+  if (price) {
+    fields.price = Number(price[2].replace(/,/g, ''))
+    const symbol = price[1].toUpperCase()
+    fields.currency = symbol.length === 3 ? symbol : (CURRENCY_SYMBOLS[price[1]] ?? undefined)
+  }
+
+  // A quantity, only when explicitly labelled — otherwise any stray number
+  // (a phone number, an invoice number) would get mistaken for one.
+  const qty = text.match(/\b(?:qty|quantity)[:\s]*(\d+)\b/i)
+  if (qty) fields.quantity = Number(qty[1])
+
+  return fields
 }
 
 /** Narrowing helper so callers don't need to null-check `supabase` again. */

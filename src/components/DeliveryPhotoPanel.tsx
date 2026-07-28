@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera, Check, ScanText, Trash2, X } from 'lucide-react'
 import {
-  deliveryPhotosAvailable,
   extractInvoiceFields,
   resolveDeliveryPhotoUrl,
   uploadDeliveryPhoto,
@@ -11,17 +10,12 @@ import { useToast } from '../context/ToastContext'
 import { Spinner } from './ui'
 
 const FIELD_LABELS: Record<keyof ExtractedFields, string> = {
-  name: 'Chemical name',
   cas: 'CAS number',
-  supplier: 'Supplier',
-  catalog_no: 'Catalogue number',
   quantity: 'Containers',
   size_value: 'Pack size',
   size_unit: 'Size unit',
-  purity: 'Purity / grade',
   price: 'Price',
   currency: 'Currency',
-  system: 'Purchasing system',
 }
 
 /**
@@ -117,7 +111,8 @@ export function DeliveryPhotoPanel({
             Delivery photo
           </h3>
           <p className="mt-0.5 text-xs text-ink-500">
-            Optional — a photo of the delivery order or invoice, for reference.
+            Optional — a photo of the delivery order or invoice, for reference. Reading it for a
+            CAS number, price or pack size runs on-device, free.
           </p>
         </div>
       </div>
@@ -158,13 +153,9 @@ export function DeliveryPhotoPanel({
             <button
               type="button"
               className="btn-secondary py-1.5 text-xs"
-              disabled={extracting || !deliveryPhotosAvailable()}
+              disabled={extracting}
               onClick={() => void handleExtract()}
-              title={
-                deliveryPhotosAvailable()
-                  ? 'Read chemical name, CAS, supplier and more off this photo — always shown for you to confirm first'
-                  : 'Reading a photo needs the shared cloud database'
-              }
+              title="Reads on-device for a CAS number, price and pack size on this photo — always shown for you to confirm first. Free-text details like the name still need typing in by hand."
             >
               {extracting ? <Spinner /> : <ScanText className="h-3.5 w-3.5" />}
               {extracting ? 'Reading…' : 'Extract details from photo'}

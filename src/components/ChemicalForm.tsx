@@ -682,17 +682,12 @@ export function ChemicalForm({
               onApplyFields={(fields) => {
                 setForm((f) => ({
                   ...f,
-                  ...(fields.name != null ? { name: fields.name } : {}),
                   ...(fields.cas != null ? { cas: fields.cas } : {}),
-                  ...(fields.supplier != null ? { supplier: fields.supplier } : {}),
-                  ...(fields.catalog_no != null ? { catalog_no: fields.catalog_no } : {}),
                   ...(fields.quantity != null ? { quantity: fields.quantity } : {}),
                   ...(fields.size_value != null ? { size_value: fields.size_value } : {}),
                   ...(fields.size_unit != null ? { size_unit: fields.size_unit } : {}),
-                  ...(fields.purity != null ? { purity: fields.purity } : {}),
                   ...(fields.price != null ? { price: fields.price } : {}),
                   ...(fields.currency != null ? { currency: fields.currency } : {}),
-                  ...(fields.system != null ? { system: fields.system } : {}),
                 }))
               }}
             />

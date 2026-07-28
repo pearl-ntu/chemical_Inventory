@@ -269,45 +269,18 @@ symptom is sign-in working locally but failing the moment it's live.
 
 ---
 
-## Optional: read delivery-photo details automatically
+## Delivery-photo reading
 
 Registering a chemical can attach a photo of the delivery order/invoice —
-that part works out of the box once you've run `schema.sql` (it adds a
-private `delivery-photos` storage bucket). Reading the photo to suggest
-field values (chemical name, CAS, supplier, price, ...) needs one more
-piece: a Supabase Edge Function that calls an AI vision API. Skip this
-section entirely and the photo-attach feature still works fine — people
-just fill in fields by hand, same as always.
-
-**You'll need:**
-- The [Supabase CLI](https://supabase.com/docs/guides/cli) installed
-  (`npm install -g supabase`)
-- An [OpenAI API key](https://platform.openai.com/api-keys) — this is
-  billed separately from any ChatGPT subscription, a few cents per photo
-  read (the function uses `gpt-4o-mini`, OpenAI's cheapest vision-capable
-  model)
-
-**Steps:**
-
-1. **Link the CLI to your project**: `supabase login`, then from this
-   folder, `supabase link --project-ref <your-project-ref>` (the ref is in
-   your Supabase project's URL: `supabase.com/dashboard/project/<ref>`).
-2. **Set the secret** the function needs — never put this in `.env`, it
-   must stay off the client entirely:
-   ```bash
-   supabase secrets set OPENAI_API_KEY=sk-...
-   ```
-3. **Deploy the function**:
-   ```bash
-   supabase functions deploy extract-invoice
-   ```
-4. Try it: open a chemical's registration form, attach a delivery photo,
-   and click **Extract details from photo**. Whatever it reads shows up as
-   a checklist — nothing is filled in until you tick fields and apply them.
-
-If it fails, check **Supabase dashboard → Edge Functions → extract-invoice
-→ Logs** first — most failures are either a missing/typo'd secret or a
-photo too blurry for the model to read anything confidently.
+works out of the box once you've run `schema.sql` (it adds a private
+`delivery-photos` storage bucket). Reading the photo for a CAS number,
+price or pack size runs entirely on-device (Tesseract.js OCR + pattern
+matching, no API key, no cost, works in demo mode too) — there's nothing
+to configure. It deliberately doesn't attempt free-text fields like the
+chemical name or supplier: OCR has no reliable way to tell those apart
+from the rest of the page, so it only surfaces patterns it can actually
+be confident about, and always as a checklist to confirm before anything
+is applied.
 
 ---
 
