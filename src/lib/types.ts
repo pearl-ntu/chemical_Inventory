@@ -143,7 +143,7 @@ export type ResearchAssetType = (typeof ASSET_TYPES)[number]
 export const ASSET_STATUSES = ['active', 'running', 'complete', 'failed', 'archived'] as const
 export type ResearchAssetStatus = (typeof ASSET_STATUSES)[number]
 
-export const ASSET_VISIBILITIES = ['lab', 'private'] as const
+export const ASSET_VISIBILITIES = ['private'] as const
 export type ResearchAssetVisibility = (typeof ASSET_VISIBILITIES)[number]
 
 export interface ResearchAsset {

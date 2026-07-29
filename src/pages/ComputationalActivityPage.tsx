@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Activity as ActivityIcon, Database, FilePlus2, FileX2, Pencil } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen } from '../components/ui'
+import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type { ActivityEntry } from '../lib/types'
 import { formatRelative } from '../lib/utils'
@@ -11,19 +12,24 @@ function isResearchAssetEntry(entry: ActivityEntry) {
 }
 
 export default function ComputationalActivityPage() {
+  const { profile } = useAuth()
   const [entries, setEntries] = useState<ActivityEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!profile) return
     api
       .listActivity(300)
       .then(setEntries)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false))
-  }, [])
+  }, [profile])
 
-  const researchEntries = useMemo(() => entries.filter(isResearchAssetEntry), [entries])
+  const researchEntries = useMemo(
+    () => entries.filter((entry) => isResearchAssetEntry(entry) && entry.user_id === profile?.id),
+    [entries, profile?.id],
+  )
 
   if (loading) return <LoadingScreen label="Loading computational activity..." />
 
@@ -31,7 +37,7 @@ export default function ComputationalActivityPage() {
     <>
       <PageHeader
         title="Computational Activity"
-        description="Changes to datasets, models, simulations, code, notebooks, and compute resources only."
+        description="Your private changes to datasets, models, simulations, code, notebooks, and compute resources."
       />
 
       {error ? (

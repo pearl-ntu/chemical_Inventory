@@ -88,7 +88,7 @@ function blank(owner: string): ResearchAssetInput {
     metrics: null,
     access_notes: null,
     status: 'active',
-    visibility: 'lab',
+    visibility: 'private',
     notes: null,
     last_verified_at: todayISO(),
   }
@@ -631,13 +631,8 @@ export default function ResearchAssetsPage() {
                           {asset.source}
                         </span>
                       )}
-                      <span className={cx(
-                        'badge ring-ink-500/20',
-                        asset.visibility === 'private'
-                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200'
-                          : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200',
-                      )}>
-                        {asset.visibility === 'private' ? 'Private to me' : 'Lab shared'}
+                      <span className="badge bg-amber-50 text-amber-700 ring-ink-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                        Private to me
                       </span>
                     </div>
                     <h2 className="mt-2 text-base font-semibold text-ink-900 dark:text-ink-50">{asset.title}</h2>
@@ -736,11 +731,11 @@ export default function ResearchAssetsPage() {
             </Field>
           </div>
 
-          <Field label="Visibility">
-            <select className="input" value={form.visibility ?? 'lab'} onChange={(e) => setForm((f) => ({ ...f, visibility: e.target.value as ResearchAssetInput['visibility'] }))}>
+          <Field label="Visibility" hint="Computational records are private to your account. Lab sharing can be added later as an explicit workflow.">
+            <select className="input" value={form.visibility ?? 'private'} onChange={(e) => setForm((f) => ({ ...f, visibility: e.target.value as ResearchAssetInput['visibility'] }))}>
               {ASSET_VISIBILITIES.map((visibility) => (
                 <option key={visibility} value={visibility}>
-                  {visibility === 'private' ? 'Private to me' : 'Lab shared'}
+                  Private to me
                 </option>
               ))}
             </select>
@@ -838,13 +833,8 @@ export default function ResearchAssetsPage() {
               <span className="badge bg-pearl-50 text-pearl-700 ring-pearl-600/20 dark:bg-pearl-500/10 dark:text-pearl-300">{detail.type}</span>
               <span className="badge bg-ink-100 text-ink-600 ring-ink-500/20 dark:bg-ink-800 dark:text-ink-300">{detail.status}</span>
               {detail.source && <span className="badge bg-ink-100 text-ink-600 ring-ink-500/20 dark:bg-ink-800 dark:text-ink-300">{detail.source}</span>}
-              <span className={cx(
-                'badge ring-ink-500/20',
-                detail.visibility === 'private'
-                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200'
-                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200',
-              )}>
-                {detail.visibility === 'private' ? 'Private to me' : 'Lab shared'}
+              <span className="badge bg-amber-50 text-amber-700 ring-ink-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                Private to me
               </span>
             </div>
 

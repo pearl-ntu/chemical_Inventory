@@ -14,9 +14,9 @@ import { useToast } from '../context/ToastContext'
 import { download } from '../lib/utils'
 import agentSource from '../../tools/pearl_hpc_agent.py?raw'
 
-const DEFAULT_AGENT_ROOT = '/scratch'
+const DEFAULT_AGENT_ROOT = '/scratch/users/<ntu-or-sutd>/<account>/<project-folder>'
 const AGENT_COMMAND = `PEARL_AGENT_ROOT=${DEFAULT_AGENT_ROOT} PEARL_AGENT_TOKEN=choose-a-secret python3 ~/pearl_hpc_agent.py`
-const TUNNEL_COMMAND = 'ssh -L 8788:127.0.0.1:8787 abedi@aspire2a'
+const TUNNEL_COMMAND = 'ssh -L 8788:127.0.0.1:8787 <your-account>@aspire2antu.nscc.sg'
 
 export default function HpcTutorialPage() {
   const toast = useToast()
@@ -36,7 +36,7 @@ export default function HpcTutorialPage() {
     <>
       <PageHeader
         title="HPC Tutorial"
-        description="One-time setup for connecting a Linux/HPC account to PEARL without uploading raw calculation files."
+        description="One-time setup for connecting your own Linux/HPC account to PEARL without uploading raw calculation files."
         actions={
           <>
             <Link className="btn-secondary" to="/computational/hpc-sync">
@@ -56,14 +56,14 @@ export default function HpcTutorialPage() {
               number="1"
               icon={<Download className="h-4 w-4" />}
               title="Download"
-              text="Download pearl_hpc_agent.py here, then upload or paste it anywhere in your Linux/HPC account."
+              text="Download pearl_hpc_agent.py here, then put it anywhere in your HPC account, for example your home folder."
               action={<button className="btn-primary py-1.5 text-xs" onClick={downloadAgent}><Download className="h-3.5 w-3.5" /> Agent</button>}
             />
             <GuideStep
               number="2"
               icon={<TerminalSquare className="h-4 w-4" />}
               title="Tunnel"
-              text="Run the SSH tunnel from your laptop. Replace the example login with your own HPC account."
+              text="Run this from your laptop/PowerShell. Replace <your-account> with your NSCC/HPC login."
               code={TUNNEL_COMMAND}
               action={<button className="btn-secondary py-1.5 text-xs" onClick={() => void copy('Tunnel command', TUNNEL_COMMAND)}><Clipboard className="h-3.5 w-3.5" /> Copy</button>}
               copied={copied === 'Tunnel command'}
@@ -72,7 +72,7 @@ export default function HpcTutorialPage() {
               number="3"
               icon={<FolderOpen className="h-4 w-4" />}
               title="Start"
-              text="Run this on HPC. Replace /scratch with the folder PEARL is allowed to browse and scan."
+              text="Run this after SSH login. Replace the scratch path with the exact folder PEARL may browse and scan."
               code={AGENT_COMMAND}
               action={<button className="btn-secondary py-1.5 text-xs" onClick={() => void copy('Agent command', AGENT_COMMAND)}><Clipboard className="h-3.5 w-3.5" /> Copy</button>}
               copied={copied === 'Agent command'}
@@ -95,7 +95,7 @@ export default function HpcTutorialPage() {
           <div className="mt-4 grid gap-2 text-sm">
             <Safety label="NSCC files" value="Not deleted, edited, moved, renamed, or uploaded by PEARL." />
             <Safety label="Imported data" value="Folder name, account label, paths, software, method, status, size, energies and warnings where detected." />
-            <Safety label="Visibility" value="HPC imports are private by default, so another user cannot see your imported folders unless you share them later." />
+            <Safety label="Visibility" value="Computational assets are private to the user who imported or created them. Other members do not see your HPC folders." />
           </div>
         </section>
 
@@ -110,13 +110,13 @@ export default function HpcTutorialPage() {
             </Link>
           </div>
           <div className="grid gap-3 md:grid-cols-4">
-            <Workflow title="Open Sync" text="Check Agent URL, token and folder, then use the terminal to inspect safely." />
+            <Workflow title="Open Sync" text="Use Agent URL http://127.0.0.1:8788, enter your token, paste the folder to scan, then inspect safely." />
             <Workflow title="Scan Folder" text="Click Scan and import. PEARL creates folder-level assets, not one noisy card per file." />
             <Workflow title="Browse Assets" text="Open a folder card to see contained records and live folder contents." />
             <Workflow title="Preview Files" text="View text files in PEARL, download previews when needed, and keep raw files on HPC." />
           </div>
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
-            Example names like <span className="font-mono">abedi@aspire2a</span> are placeholders. Each user replaces them with their own HPC login and folder path.
+            Example paths use placeholders. A real scratch folder usually looks like <span className="font-mono">/scratch/users/sutd/your_account/project/run_01</span> or <span className="font-mono">/scratch/users/ntu/your_account/project/run_01</span>. Use the folder you want PEARL to index.
           </div>
         </section>
       </div>

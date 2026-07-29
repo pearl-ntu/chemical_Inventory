@@ -621,7 +621,7 @@ export const api = {
       external_path: row.external_path ?? null,
       size_bytes: row.size_bytes ?? null,
       tags: row.tags ?? [],
-      visibility: row.visibility ?? 'lab',
+      visibility: row.visibility ?? 'private',
     }))
   },
 
@@ -698,7 +698,7 @@ export const api = {
     }
     if (error) fail('Could not add research asset', error)
     await api.log(null, 'created', `Added research asset ${input.title}`, actor)
-    return { ...(data as ResearchAsset), visibility: (data as ResearchAsset).visibility ?? 'lab' }
+    return { ...(data as ResearchAsset), visibility: (data as ResearchAsset).visibility ?? 'private' }
   },
 
   async upsertResearchAsset(input: ResearchAssetInput, actor: Profile): Promise<ResearchAsset> {
@@ -724,7 +724,7 @@ export const api = {
       return row
     }
     if (error) fail('Could not save research asset', error)
-    const row = { ...(data as ResearchAsset), visibility: (data as ResearchAsset).visibility ?? 'lab' }
+    const row = { ...(data as ResearchAsset), visibility: (data as ResearchAsset).visibility ?? 'private' }
     await api.log(null, 'updated', `Synced research asset ${row.title}`, actor)
     return row
   },
@@ -751,7 +751,7 @@ export const api = {
       return row
     }
     if (error) fail('Could not update research asset', error)
-    const row = { ...(data as ResearchAsset), visibility: (data as ResearchAsset).visibility ?? 'lab' }
+    const row = { ...(data as ResearchAsset), visibility: (data as ResearchAsset).visibility ?? 'private' }
     await api.log(null, 'updated', `Updated research asset ${row.title}`, actor)
     return row
   },

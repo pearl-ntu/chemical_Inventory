@@ -243,7 +243,7 @@ export const localDb = {
       external_path: row.external_path ?? null,
       size_bytes: row.size_bytes ?? null,
       tags: row.tags ?? [],
-      visibility: row.visibility ?? 'lab',
+      visibility: row.visibility ?? 'private',
     }))
   },
 

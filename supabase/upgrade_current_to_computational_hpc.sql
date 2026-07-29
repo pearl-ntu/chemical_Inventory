@@ -66,7 +66,7 @@ create table if not exists public.research_assets (
   metrics               text,
   access_notes          text,
   status                text not null default 'active' check (status in ('active', 'running', 'complete', 'failed', 'archived')),
-  visibility            text not null default 'lab' check (visibility in ('lab', 'private')),
+  visibility            text not null default 'private' check (visibility = 'private'),
   notes                 text,
   created_by            uuid references auth.users on delete set null,
   created_by_name       text,
@@ -91,7 +91,14 @@ alter table public.research_assets add column if not exists input_link text;
 alter table public.research_assets add column if not exists output_link text;
 alter table public.research_assets add column if not exists environment text;
 alter table public.research_assets add column if not exists metrics text;
-alter table public.research_assets add column if not exists visibility text not null default 'lab';
+alter table public.research_assets add column if not exists visibility text not null default 'private';
+alter table public.research_assets alter column visibility set default 'private';
+update public.research_assets
+set visibility = 'private'
+where visibility is null or visibility <> 'private';
+
+alter table public.research_assets
+  drop constraint if exists research_assets_visibility_check;
 
 do $$
 begin
@@ -102,7 +109,7 @@ begin
       and conrelid = 'public.research_assets'::regclass
   ) then
     alter table public.research_assets
-      add constraint research_assets_visibility_check check (visibility in ('lab', 'private'));
+      add constraint research_assets_visibility_check check (visibility = 'private');
   end if;
 end $$;
 
@@ -134,16 +141,26 @@ create index if not exists research_asset_chemicals_chemical_idx
 alter table public.research_assets enable row level security;
 alter table public.research_asset_chemicals enable row level security;
 
+drop policy if exists "activity readable by signed-in users" on public.activity_log;
+create policy "activity readable by signed-in users"
+  on public.activity_log for select
+  to authenticated
+  using (
+    public.is_approved()
+    and (
+      details is null
+      or details !~* 'research asset'
+      or user_id = (select auth.uid())
+    )
+  );
+
 drop policy if exists "research assets readable by approved users" on public.research_assets;
 create policy "research assets readable by approved users"
   on public.research_assets for select
   to authenticated
   using (
     public.is_approved()
-    and (
-      visibility = 'lab'
-      or created_by = (select auth.uid())
-    )
+    and created_by = (select auth.uid())
   );
 
 drop policy if exists "members add research assets" on public.research_assets;
@@ -153,7 +170,8 @@ create policy "members add research assets"
   with check (
     public.is_approved()
     and public.current_user_role() in ('admin', 'member')
-    and visibility in ('lab', 'private')
+    and visibility = 'private'
+    and created_by = (select auth.uid())
   );
 
 drop policy if exists "members edit research assets" on public.research_assets;
@@ -163,19 +181,13 @@ create policy "members edit research assets"
   using (
     public.is_approved()
     and public.current_user_role() in ('admin', 'member')
-    and (
-      visibility = 'lab'
-      or created_by = (select auth.uid())
-    )
+    and created_by = (select auth.uid())
   )
   with check (
     public.is_approved()
     and public.current_user_role() in ('admin', 'member')
-    and visibility in ('lab', 'private')
-    and (
-      visibility = 'lab'
-      or created_by = (select auth.uid())
-    )
+    and visibility = 'private'
+    and created_by = (select auth.uid())
   );
 
 drop policy if exists "owners and admins delete research assets" on public.research_assets;
@@ -184,20 +196,46 @@ create policy "owners and admins delete research assets"
   to authenticated
   using (
     public.is_approved()
-    and (public.current_user_role() = 'admin' or created_by = (select auth.uid()))
+    and created_by = (select auth.uid())
   );
 
 drop policy if exists "research asset links readable by approved users" on public.research_asset_chemicals;
 create policy "research asset links readable by approved users"
   on public.research_asset_chemicals for select
   to authenticated
-  using (public.is_approved());
+  using (
+    public.is_approved()
+    and exists (
+      select 1
+      from public.research_assets asset
+      where asset.id = research_asset_id
+        and asset.created_by = (select auth.uid())
+    )
+  );
 
 drop policy if exists "members manage research asset links" on public.research_asset_chemicals;
 create policy "members manage research asset links"
   on public.research_asset_chemicals for all
   to authenticated
-  using (public.is_approved() and public.current_user_role() in ('admin', 'member'))
-  with check (public.is_approved() and public.current_user_role() in ('admin', 'member'));
+  using (
+    public.is_approved()
+    and public.current_user_role() in ('admin', 'member')
+    and exists (
+      select 1
+      from public.research_assets asset
+      where asset.id = research_asset_id
+        and asset.created_by = (select auth.uid())
+    )
+  )
+  with check (
+    public.is_approved()
+    and public.current_user_role() in ('admin', 'member')
+    and exists (
+      select 1
+      from public.research_assets asset
+      where asset.id = research_asset_id
+        and asset.created_by = (select auth.uid())
+    )
+  );
 
 notify pgrst, 'reload schema';

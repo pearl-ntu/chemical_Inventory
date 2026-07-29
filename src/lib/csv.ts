@@ -377,7 +377,7 @@ export function researchAssetTemplateCSV(): string {
       '',
       'emission; tddft; spectra',
       'active',
-      'lab',
+      'private',
       todayISO(),
       'Do not upload raw files here.',
     ].map(esc).join(','),
@@ -441,7 +441,7 @@ export function rowsToResearchAssets(table: string[][], fallbackOwner: string): 
       status: ['active', 'running', 'complete', 'failed', 'archived'].includes(status)
         ? (status as ResearchAssetInput['status'])
         : 'active',
-      visibility: cell(cells, 'visibility') === 'private' ? 'private' : 'lab',
+      visibility: 'private',
       notes: cell(cells, 'notes') || null,
       last_verified_at: cell(cells, 'last_verified_at') || todayISO(),
     })
