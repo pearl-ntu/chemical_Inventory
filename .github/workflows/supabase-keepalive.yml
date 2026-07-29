@@ -1,0 +1,25 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Runs Monday and Thursday at 08:00 UTC.
+    # Supabase pauses free-tier projects after 7 days of inactivity —
+    # pinging twice a week leaves comfortable margin even if a run gets delayed.
+    - cron: '0 8 * * 1,4'
+  workflow_dispatch: {}   # lets you trigger it manually from the Actions tab to test
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Auth health endpoint
+        run: |
+          response=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/auth/v1/health" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}")
+          echo "HTTP status: $response"
+          cat /tmp/response.txt
+          if [ "$response" -ne 200 ]; then
+            echo "::error::Supabase health check failed with status $response"
+            exit 1
+          fi
