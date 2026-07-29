@@ -29,6 +29,7 @@ import { LazyMolfileSvgRenderer, LazyReactionViewer } from './LazyStructure'
 import { ConfirmDialog, Drawer, Spinner } from './ui'
 import { CommentThread } from './CommentThread'
 import { Molecule3DViewer } from './Molecule3DViewer'
+import { PubChemStructureImage } from './PubChemStructureImage'
 
 function Row({
   icon,
@@ -117,8 +118,6 @@ export function ChemicalDrawer({
 
   const c = chemical
   const canDelete = isAdmin || c.created_by === profile?.id
-  const pubchemTerm = c.cas?.trim() || c.name?.trim() || ''
-  const fallback2dImage = info?.imageUrl ?? (pubchemTerm ? pubchem.structureImageUrlForTerm(pubchemTerm, 'large') : null)
   const viewerSdf = sdf3d ?? sdf2d ?? c.structure_molfile
 
   async function copyCode() {
@@ -211,13 +210,14 @@ export function ChemicalDrawer({
                   <Suspense fallback={<Spinner className="h-5 w-5 text-ink-300" />}>
                     <LazyMolfileSvgRenderer molfile={c.structure_molfile} width={220} height={150} />
                   </Suspense>
-                ) : fallback2dImage && pubchemImageOk ? (
-                  <img
-                    src={fallback2dImage}
+                ) : pubchemImageOk ? (
+                  <PubChemStructureImage
+                    cas={c.cas}
+                    name={c.name}
+                    cid={info?.cid}
                     alt={`Structure of ${c.name}`}
                     className="max-h-36 w-auto object-contain dark:brightness-95 dark:invert-[.92] dark:hue-rotate-180"
-                    loading="lazy"
-                    onError={() => setPubchemImageOk(false)}
+                    onExhausted={() => setPubchemImageOk(false)}
                   />
                 ) : (
                   <p className="px-3 text-center text-xs text-ink-400">
