@@ -205,7 +205,7 @@ export function AskPearl() {
             <h2 className="truncate text-sm font-semibold text-ink-900 dark:text-ink-100">Ask PEARL</h2>
             <p className="text-[11px] capitalize text-ink-400">{workspace}</p>
           </div>
-          <button className="btn-ghost p-1" aria-label="Close Ask PEARL" onClick={() => setState('icon')}>
+          <button type="button" className="btn-ghost p-1" aria-label="Close Ask PEARL" onClick={() => setState('icon')}>
             <X className="h-4 w-4" />
           </button>
         </header>
@@ -279,11 +279,14 @@ export function AskPearl() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) void askText(question)
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  void askText(question)
+                }
               }}
               placeholder="Ask a question..."
             />
-            <button className="btn-primary h-9 shrink-0 px-3" disabled={busy || !question.trim()} onClick={() => void askText(question)}>
+            <button type="button" className="btn-primary h-9 shrink-0 px-3" disabled={busy || !question.trim()} onClick={() => void askText(question)}>
               {busy ? <Spinner /> : <Send className="h-4 w-4" />}
             </button>
           </div>
@@ -295,6 +298,7 @@ export function AskPearl() {
   if (state === 'icon') {
     return (
       <button
+        type="button"
         className="no-print fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-950"
         aria-label="Open Ask PEARL"
         onClick={() => setState('panel')}
@@ -306,11 +310,11 @@ export function AskPearl() {
 
   return (
     <div className="no-print fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full border border-ink-200 bg-white py-2 pl-2 pr-2 dark:border-ink-800 dark:bg-ink-950">
-      <button className="flex items-center gap-2 pl-1 pr-2" onClick={() => setState('panel')}>
+      <button type="button" className="flex items-center gap-2 pl-1 pr-2" onClick={() => setState('panel')}>
         <PearlMark className="h-6 w-6" />
         <span className="text-sm font-semibold text-ink-800 dark:text-ink-100">Ask PEARL</span>
       </button>
-      <button className="btn-ghost rounded-full p-1" aria-label="Collapse Ask PEARL" onClick={() => setState('icon')}>
+      <button type="button" className="btn-ghost rounded-full p-1" aria-label="Collapse Ask PEARL" onClick={() => setState('icon')}>
         <X className="h-3.5 w-3.5" />
       </button>
     </div>

@@ -76,7 +76,6 @@ export default function App() {
           <Route path="computational/hpc-tutorial" element={<HpcTutorialPage />} />
           <Route path="computational/storage" element={<Navigate to="/computational/hpc-sync" replace />} />
           <Route path="operations" element={<OperationsPage />} />
-          <Route path="ask-pearl" element={<Navigate to="/" replace />} />
           <Route path="research-assets" element={<ResearchAssetsPage />} />
           <Route path="activity" element={<ActivityPage />} />
           <Route path="labels" element={<LabelsPage />} />
