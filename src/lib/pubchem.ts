@@ -46,14 +46,23 @@ export function pubchemPageUrl(cid: number): string {
   return `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`
 }
 
+async function fetchSdf(url: string): Promise<string | null> {
+  const res = await fetch(url, {
+    headers: { Accept: 'chemical/x-mdl-sdfile,text/plain,*/*' },
+  })
+  if (!res.ok) return null
+  const text = await res.text()
+  return text.includes('$$$$') || text.trim().length > 100 ? text : null
+}
+
 export async function fetch3dSdf(cid: number): Promise<string | null> {
   try {
-    const res = await fetch(`${BASE}/compound/cid/${cid}/record/SDF?record_type=3d`, {
-      headers: { Accept: 'chemical/x-mdl-sdfile,text/plain,*/*' },
-    })
-    if (!res.ok) return null
-    const text = await res.text()
-    return text.includes('$$$$') || text.trim().length > 100 ? text : null
+    const direct = await fetchSdf(`${BASE}/compound/cid/${cid}/record/SDF?record_type=3d`)
+    if (direct) return direct
+    const conformers = await fetch(`${BASE}/compound/cid/${cid}/conformers/TXT`)
+    if (!conformers.ok) return null
+    const conformerId = (await conformers.text()).split(/\s+/).find(Boolean)
+    return conformerId ? fetchSdf(`${BASE}/conformers/${encodeURIComponent(conformerId)}/SDF`) : null
   } catch {
     return null
   }
