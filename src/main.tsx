@@ -4,6 +4,7 @@ import { HashRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
+import { applyAppearanceTheme, getStoredAppearanceTheme } from './lib/appearance'
 import { supabase } from './lib/supabase'
 import './index.css'
 
@@ -42,6 +43,7 @@ function captureAuthErrorFromUrl() {
  */
 async function bootstrap() {
   captureAuthErrorFromUrl()
+  applyAppearanceTheme(getStoredAppearanceTheme())
   if (supabase) await supabase.auth.getSession()
 
   // HashRouter, not BrowserRouter: GitHub Pages serves static files only, so a

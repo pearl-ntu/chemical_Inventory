@@ -40,6 +40,9 @@ const ACTIVITY_ICON: Record<ActivityAction, typeof Pencil> = {
   signed_up: Sparkles,
   invited: Sparkles,
   role_changed: ShieldAlert,
+  moved: MapPin,
+  disposed: CircleSlash,
+  handover: ShieldAlert,
 }
 
 /** What kind of thing needs a look — drives both the rail's Views/Queues
@@ -296,18 +299,8 @@ export default function DashboardPage() {
       />
 
       {/* attention banner — the single "what do I actually need to do" line */}
-      <div className="animate-slide-up" style={stagger(0)}>
-        <AttentionBanner
-          low={stats.low.length}
-          duplicates={stats.duplicates.length}
-          expiring={stats.expiring.length}
-          expiringUrgent={stats.expiringUrgent.length}
-          onClick={() => jumpToAttention('all')}
-        />
-      </div>
-
       {/* KPI strip — one bordered surface, five equal columns, never wraps */}
-      <div className="mt-4 animate-slide-up" style={stagger(1)}>
+      <div className="mt-4 animate-slide-up" style={stagger(0)}>
         <div className="card grid grid-cols-2 divide-y divide-ink-100 p-0 sm:grid-cols-3 sm:divide-x sm:divide-y-0 xl:grid-cols-5 dark:divide-ink-800">
           <Kpi
             label="In stock"
@@ -352,6 +345,16 @@ export default function DashboardPage() {
       {/* control toolbar — saved views, cleanup queues, and hazard-class
           lenses in one horizontal strip, so the page stays full-width below
           instead of losing a column to a permanent side rail */}
+      <div className="mt-4 animate-slide-up" style={stagger(1)}>
+        <AttentionBanner
+          low={stats.low.length}
+          duplicates={stats.duplicates.length}
+          expiring={stats.expiring.length}
+          expiringUrgent={stats.expiringUrgent.length}
+          onClick={() => jumpToAttention('all')}
+        />
+      </div>
+
       <div className="mt-4 animate-slide-up" style={stagger(2)}>
         <ControlToolbar
           counts={{

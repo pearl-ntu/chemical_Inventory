@@ -288,8 +288,8 @@ is applied.
 
 **Backups.** Supabase takes daily backups on paid plans. On the free plan, get
 into the habit of Settings → *Export everything as CSV* once a term, and keep
-the file in the group Dropbox. Two minutes, and it means the inventory can never
-be lost.
+the file in a shared lab backup folder. Two minutes, and it means the inventory
+can never be lost.
 
 **Someone leaves the group.** Members → set them to `viewer`, or delete the
 account under Supabase **Authentication → Users**. Their name stays on the

@@ -7,6 +7,7 @@ import {
   EyeOff,
   HardDrive,
   KeyRound,
+  Palette,
   RotateCcw,
   Save,
 } from 'lucide-react'
@@ -16,6 +17,12 @@ import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
 import { auth } from '../lib/api'
+import {
+  APPEARANCE_THEMES,
+  getStoredAppearanceTheme,
+  saveAppearanceTheme,
+  type AppearanceTheme,
+} from '../lib/appearance'
 import { LAB_NAME, LAB_SUBTITLE, MODE, SUPABASE_URL } from '../lib/config'
 import { toCSV } from '../lib/csv'
 import { localDb } from '../lib/localDb'
@@ -30,6 +37,7 @@ export default function SettingsPage() {
   const [position, setPosition] = useState(profile?.lab_position ?? '')
   const [saving, setSaving] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [appearanceTheme, setAppearanceTheme] = useState<AppearanceTheme>(() => getStoredAppearanceTheme())
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -77,6 +85,12 @@ export default function SettingsPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  function chooseAppearanceTheme(theme: AppearanceTheme) {
+    setAppearanceTheme(theme)
+    saveAppearanceTheme(theme)
+    toast.success('Theme updated.')
   }
 
   return (
@@ -176,6 +190,48 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
+        </section>
+
+        {/* appearance ----------------------------------------------------- */}
+        <section className="card p-5">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-ink-500">
+            <Palette className="h-4 w-4" /> Appearance
+          </h2>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {APPEARANCE_THEMES.map((theme) => {
+              const selected = theme.id === appearanceTheme
+              return (
+                <button
+                  key={theme.id}
+                  type="button"
+                  onClick={() => chooseAppearanceTheme(theme.id)}
+                  className={[
+                    'rounded-lg border p-3 text-left transition-colors',
+                    selected
+                      ? 'border-pearl-500 bg-pearl-50 ring-1 ring-pearl-500 dark:bg-pearl-500/10'
+                      : 'border-ink-200 hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800',
+                  ].join(' ')}
+                >
+                  <div className="mb-2 flex items-center gap-1.5">
+                    {theme.swatches.map((color) => (
+                      <span
+                        key={color}
+                        className="h-4 w-4 rounded-full border border-white shadow-sm ring-1 ring-ink-200 dark:ring-ink-700"
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{theme.name}</p>
+                  <p className="mt-0.5 text-xs leading-snug text-ink-500 dark:text-ink-400">
+                    {theme.description}
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-3 text-xs text-ink-400">
+            This only changes your browser view; it does not affect other lab members.
+          </p>
         </section>
 
         {/* deployment ---------------------------------------------------- */}

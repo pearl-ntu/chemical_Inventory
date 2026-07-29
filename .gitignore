@@ -9,6 +9,8 @@ dist-ssr/
 Thumbs.db
 *.log
 npm-debug.log*
+__pycache__/
+*.py[cod]
 .vscode/*
 !.vscode/extensions.json
 .idea/

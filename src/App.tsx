@@ -6,12 +6,18 @@ import { useAuth } from './context/AuthContext'
 import { InventoryProvider } from './context/InventoryContext'
 import ActivityPage from './pages/ActivityPage'
 import AnalyticsPage from './pages/AnalyticsPage'
+import ComputationalActivityPage from './pages/ComputationalActivityPage'
+import ComputationalAnalyticsPage from './pages/ComputationalAnalyticsPage'
+import ComputationalDashboardPage from './pages/ComputationalDashboardPage'
 import DashboardPage from './pages/DashboardPage'
+import HpcSyncPage from './pages/HpcSyncPage'
 import InventoryPage from './pages/InventoryPage'
 import LabelsPage from './pages/LabelsPage'
 import LocationsPage from './pages/LocationsPage'
 import MembersPage from './pages/MembersPage'
+import OperationsPage from './pages/OperationsPage'
 import PendingApprovalPage from './pages/PendingApprovalPage'
+import ResearchAssetsPage from './pages/ResearchAssetsPage'
 import SetPasswordPage from './pages/SetPasswordPage'
 import SettingsPage from './pages/SettingsPage'
 
@@ -62,6 +68,13 @@ export default function App() {
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="locations" element={<LocationsPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="computational" element={<ComputationalDashboardPage />} />
+          <Route path="computational/analytics" element={<ComputationalAnalyticsPage />} />
+          <Route path="computational/activity" element={<ComputationalActivityPage />} />
+          <Route path="computational/hpc-sync" element={<HpcSyncPage />} />
+          <Route path="computational/storage" element={<Navigate to="/computational/hpc-sync" replace />} />
+          <Route path="operations" element={<OperationsPage />} />
+          <Route path="research-assets" element={<ResearchAssetsPage />} />
           <Route path="activity" element={<ActivityPage />} />
           <Route path="labels" element={<LabelsPage />} />
           <Route path="settings" element={<SettingsPage />} />

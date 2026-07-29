@@ -35,6 +35,7 @@ export interface Chemical {
   system: string | null
   supplier: string | null
   catalog_no: string | null
+  batch_no: string | null
   location: string | null
   sub_location: string | null
   formula: string | null
@@ -46,7 +47,11 @@ export interface Chemical {
   /** Path into the delivery-photos storage bucket (cloud) or a data URL
    *  (demo mode) — a photo of the delivery order/invoice, for reference. */
   delivery_photo_path: string | null
+  sds_url: string | null
+  coa_url: string | null
+  invoice_url: string | null
   purity: string | null
+  concentration: string | null
   quantity: number
   size_value: number | null
   size_unit: string
@@ -59,6 +64,11 @@ export interface Chemical {
   expiry_date: string | null
   status: Status
   date_emptied: string | null
+  disposal_date: string | null
+  disposal_reason: string | null
+  disposal_waste_class: string | null
+  reorder_url: string | null
+  reorder_priority: 'none' | 'watch' | 'soon' | 'urgent'
   hazards: string[]
   storage_class: string | null
   remarks: string | null
@@ -123,6 +133,67 @@ export type ActivityAction =
   | 'signed_up'
   | 'invited'
   | 'role_changed'
+  | 'moved'
+  | 'disposed'
+  | 'handover'
+
+export const ASSET_TYPES = ['dataset', 'model', 'simulation', 'code', 'notebook', 'compute', 'sample', 'publication', 'other'] as const
+export type ResearchAssetType = (typeof ASSET_TYPES)[number]
+
+export const ASSET_STATUSES = ['active', 'running', 'complete', 'failed', 'archived'] as const
+export type ResearchAssetStatus = (typeof ASSET_STATUSES)[number]
+
+export const ASSET_VISIBILITIES = ['lab', 'private'] as const
+export type ResearchAssetVisibility = (typeof ASSET_VISIBILITIES)[number]
+
+export interface ResearchAsset {
+  id: string
+  type: ResearchAssetType
+  title: string
+  description: string | null
+  project: string | null
+  owner: string | null
+  related_chemical_id: string | null
+  related_chemical_name: string | null
+  source: string | null
+  source_external_id: string | null
+  external_path: string | null
+  storage_link: string | null
+  size_bytes: number | null
+  size_label: string | null
+  format: string | null
+  license: string | null
+  checksum: string | null
+  version: string | null
+  tags: string[]
+  method: string | null
+  software: string | null
+  input_link: string | null
+  output_link: string | null
+  repo_link: string | null
+  environment: string | null
+  metrics: string | null
+  access_notes: string | null
+  status: ResearchAssetStatus
+  visibility: ResearchAssetVisibility
+  notes: string | null
+  created_by: string | null
+  created_by_name: string | null
+  created_at: string
+  updated_at: string
+  last_verified_at: string | null
+}
+
+export type ResearchAssetInput = Omit<
+  ResearchAsset,
+  'id' | 'created_at' | 'updated_at' | 'created_by' | 'created_by_name'
+>
+
+export interface ResearchAssetChemicalLink {
+  research_asset_id: string
+  chemical_id: string
+  chemical_name?: string | null
+}
 
 export interface ActivityEntry {
   id: string

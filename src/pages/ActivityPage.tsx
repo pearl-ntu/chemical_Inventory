@@ -25,6 +25,13 @@ const ICON: Record<ActivityAction, typeof Pencil> = {
   signed_up: UserPlus,
   invited: UserPlus,
   role_changed: ShieldCheck,
+  moved: PackagePlus,
+  disposed: FileX2,
+  handover: ShieldCheck,
+}
+
+function isResearchAssetEntry(entry: ActivityEntry) {
+  return /research asset/i.test(entry.details ?? '')
 }
 
 export default function ActivityPage() {
@@ -42,26 +49,28 @@ export default function ActivityPage() {
 
   if (loading) return <LoadingScreen label="Loading the audit trail…" />
 
+  const inventoryEntries = entries.filter((entry) => !isResearchAssetEntry(entry))
+
   return (
     <>
       <PageHeader
-        title="Activity"
-        description="An append-only record of every change, so the group can always answer “who moved that bottle?”"
+        title="Experimental Activity"
+        description="Chemical inventory changes only, kept separate from computational research assets."
       />
 
       {error ? (
         <EmptyState icon={<ActivityIcon className="h-6 w-6" />} title="Could not load the log" description={error} />
-      ) : entries.length === 0 ? (
+      ) : inventoryEntries.length === 0 ? (
         <div className="card">
           <EmptyState
             icon={<ActivityIcon className="h-6 w-6" />}
-            title="No activity yet"
-            description="Entries appear here as people add, edit and finish containers."
+            title="No experimental activity yet"
+            description="Chemical add, edit, movement, disposal and stock changes will appear here."
           />
         </div>
       ) : (
         <div className="card divide-y divide-ink-100 dark:divide-ink-800">
-          {entries.map((e) => {
+          {inventoryEntries.map((e) => {
             const Icon = ICON[e.action] ?? Pencil
             return (
               <div key={e.id} className="flex items-start gap-3 px-4 py-3">
@@ -85,3 +94,4 @@ export default function ActivityPage() {
     </>
   )
 }
+

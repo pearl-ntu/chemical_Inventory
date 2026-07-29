@@ -92,6 +92,7 @@ function blank(defaults: Partial<ChemicalInput>, registeredBy: string): Chemical
     system: null,
     supplier: null,
     catalog_no: null,
+    batch_no: null,
     location: null,
     sub_location: null,
     formula: null,
@@ -99,7 +100,11 @@ function blank(defaults: Partial<ChemicalInput>, registeredBy: string): Chemical
     structure_molfile: null,
     reaction_rxnfile: null,
     delivery_photo_path: null,
+    sds_url: null,
+    coa_url: null,
+    invoice_url: null,
     purity: null,
+    concentration: null,
     quantity: 1,
     size_value: null,
     size_unit: 'g',
@@ -112,6 +117,11 @@ function blank(defaults: Partial<ChemicalInput>, registeredBy: string): Chemical
     expiry_date: null,
     status: 'active',
     date_emptied: null,
+    disposal_date: null,
+    disposal_reason: null,
+    disposal_waste_class: null,
+    reorder_url: null,
+    reorder_priority: 'none',
     hazards: [],
     storage_class: null,
     remarks: null,
@@ -504,6 +514,25 @@ export function ChemicalForm({
               />
             </Field>
           </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Concentration" hint="For stock solutions and commercial solutions.">
+              <input
+                className="input"
+                value={form.concentration ?? ''}
+                onChange={(e) => set('concentration', e.target.value || null)}
+                placeholder="1.0 M in THF"
+              />
+            </Field>
+            <Field label="Batch / lot no.">
+              <input
+                className="input font-mono"
+                value={form.batch_no ?? ''}
+                onChange={(e) => set('batch_no', e.target.value || null)}
+                placeholder="Lot, batch, or CoA number"
+              />
+            </Field>
+          </div>
         </section>
 
         {/* -------------------------------------------------- amount */}
@@ -695,6 +724,33 @@ export function ChemicalForm({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="SDS link">
+              <input
+                className="input"
+                value={form.sds_url ?? ''}
+                onChange={(e) => set('sds_url', e.target.value || null)}
+                placeholder="https://..."
+              />
+            </Field>
+            <Field label="CoA link">
+              <input
+                className="input"
+                value={form.coa_url ?? ''}
+                onChange={(e) => set('coa_url', e.target.value || null)}
+                placeholder="Certificate link"
+              />
+            </Field>
+            <Field label="Invoice / DO link">
+              <input
+                className="input"
+                value={form.invoice_url ?? ''}
+                onChange={(e) => set('invoice_url', e.target.value || null)}
+                placeholder="Delivery order or invoice"
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
             <Field label="Price">
               <input
                 className="input"
@@ -723,6 +779,29 @@ export function ChemicalForm({
                   <option key={p} value={p} />
                 ))}
               </datalist>
+            </Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Reorder priority">
+              <select
+                className="input"
+                value={form.reorder_priority}
+                onChange={(e) => set('reorder_priority', e.target.value as ChemicalInput['reorder_priority'])}
+              >
+                <option value="none">None</option>
+                <option value="watch">Watch</option>
+                <option value="soon">Soon</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </Field>
+            <Field label="Reorder link">
+              <input
+                className="input"
+                value={form.reorder_url ?? ''}
+                onChange={(e) => set('reorder_url', e.target.value || null)}
+                placeholder="Supplier catalogue, Ariba, quote..."
+              />
             </Field>
           </div>
 
@@ -759,6 +838,33 @@ export function ChemicalForm({
                 type="date"
                 value={form.expiry_date ?? ''}
                 onChange={(e) => set('expiry_date', e.target.value || null)}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Disposal date">
+              <input
+                className="input"
+                type="date"
+                value={form.disposal_date ?? ''}
+                onChange={(e) => set('disposal_date', e.target.value || null)}
+              />
+            </Field>
+            <Field label="Waste class">
+              <input
+                className="input"
+                value={form.disposal_waste_class ?? ''}
+                onChange={(e) => set('disposal_waste_class', e.target.value || null)}
+                placeholder="Halogenated waste, heavy metal..."
+              />
+            </Field>
+            <Field label="Disposal reason">
+              <input
+                className="input"
+                value={form.disposal_reason ?? ''}
+                onChange={(e) => set('disposal_reason', e.target.value || null)}
+                placeholder="Expired, contaminated, finished..."
               />
             </Field>
           </div>

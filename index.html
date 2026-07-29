@@ -22,6 +22,10 @@
         var t = localStorage.getItem('pearl.theme')
         if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches))
           document.documentElement.classList.add('dark')
+        var a = localStorage.getItem('pearl.appearance_theme')
+        if (a === 'emerald' || a === 'violet' || a === 'ruby') {
+          document.documentElement.dataset.theme = a
+        }
       } catch (e) {}
     </script>
   </head>

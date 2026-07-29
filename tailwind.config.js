@@ -12,17 +12,17 @@ export default {
         // Brand ramp, keyed to the lab's actual mark: deep navy through to the
         // blue edge of its rainbow sphere. Not a generic teal SaaS accent.
         pearl: {
-          50: '#eef4ff',
-          100: '#dce8ff',
-          200: '#b8d1ff',
-          300: '#8ab3ff',
-          400: '#5b90fa',
-          500: '#3b73f0',
-          600: '#2457d6',
-          700: '#1c44ab',
-          800: '#1a3a89',
-          900: '#182f68',
-          950: '#0b1830',
+          50: 'rgb(var(--color-pearl-50) / <alpha-value>)',
+          100: 'rgb(var(--color-pearl-100) / <alpha-value>)',
+          200: 'rgb(var(--color-pearl-200) / <alpha-value>)',
+          300: 'rgb(var(--color-pearl-300) / <alpha-value>)',
+          400: 'rgb(var(--color-pearl-400) / <alpha-value>)',
+          500: 'rgb(var(--color-pearl-500) / <alpha-value>)',
+          600: 'rgb(var(--color-pearl-600) / <alpha-value>)',
+          700: 'rgb(var(--color-pearl-700) / <alpha-value>)',
+          800: 'rgb(var(--color-pearl-800) / <alpha-value>)',
+          900: 'rgb(var(--color-pearl-900) / <alpha-value>)',
+          950: 'rgb(var(--color-pearl-950) / <alpha-value>)',
         },
         ink: {
           50: '#f6f7f9',

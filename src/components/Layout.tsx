@@ -4,14 +4,19 @@ import {
   Activity,
   BarChart3,
   ChevronDown,
+  ClipboardList,
+  Database,
   FlaskConical,
   LayoutDashboard,
   LogOut,
   MapPin,
   Menu,
+  Minus,
   Moon,
+  Plus,
   QrCode,
   Settings,
+  Server,
   Sun,
   Users,
   X,
@@ -25,10 +30,114 @@ const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/inventory', label: 'Inventory', icon: FlaskConical, end: false },
   { to: '/locations', label: 'Locations', icon: MapPin, end: false },
+  { to: '/operations', label: 'Operations', icon: ClipboardList, end: false },
   { to: '/analytics', label: 'Analytics', icon: BarChart3, end: false },
   { to: '/activity', label: 'Activity', icon: Activity, end: false },
   { to: '/labels', label: 'QR labels', icon: QrCode, end: false },
 ]
+
+const COMPUTATIONAL_NAV = [
+  { to: '/computational', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/research-assets', label: 'Research Assets', icon: Database, end: false },
+  { to: '/computational/hpc-sync', label: 'Linux/HPC Sync', icon: Server, end: false },
+  { to: '/computational/analytics', label: 'Analytics', icon: BarChart3, end: false },
+  { to: '/computational/activity', label: 'Activity', icon: Activity, end: false },
+]
+
+type WorkspaceMode = 'experimental' | 'computational'
+type SidebarWidth = 'compact' | 'comfortable' | 'wide'
+
+const WORKSPACE_STORAGE_KEY = 'pearl.workspace_mode'
+const SIDEBAR_WIDTH_STORAGE_KEY = 'pearl.sidebar_width'
+const SHARED_WORKSPACE_PATHS = new Set(['/analytics', '/activity'])
+const SIDEBAR_WIDTHS: Record<SidebarWidth, string> = {
+  compact: 'w-60',
+  comfortable: 'w-72',
+  wide: 'w-80',
+}
+
+function storedWorkspaceMode(): WorkspaceMode {
+  try {
+    return localStorage.getItem(WORKSPACE_STORAGE_KEY) === 'computational'
+      ? 'computational'
+      : 'experimental'
+  } catch {
+    return 'experimental'
+  }
+}
+
+function workspaceFromPath(pathname: string): WorkspaceMode {
+  if (SHARED_WORKSPACE_PATHS.has(pathname)) return storedWorkspaceMode()
+  return pathname.startsWith('/research-assets') || pathname.startsWith('/computational')
+    ? 'computational'
+    : 'experimental'
+}
+
+function storedSidebarWidth(): SidebarWidth {
+  try {
+    const value = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
+    return value === 'compact' || value === 'wide' ? value : 'comfortable'
+  } catch {
+    return 'comfortable'
+  }
+}
+
+function WorkspaceSwitch({
+  compact = false,
+  shortLabels = false,
+  onSwitch,
+}: {
+  compact?: boolean
+  shortLabels?: boolean
+  onSwitch?: () => void
+}) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const mode = workspaceFromPath(location.pathname)
+
+  function setMode(next: WorkspaceMode) {
+    try {
+      localStorage.setItem(WORKSPACE_STORAGE_KEY, next)
+    } catch {
+      /* route still changes */
+    }
+    navigate(next === 'experimental' ? '/' : '/computational')
+    onSwitch?.()
+  }
+
+  return (
+    <div
+      className={cx(
+        'rounded-lg border border-ink-200 bg-ink-50 p-1 dark:border-ink-800 dark:bg-ink-950',
+        compact ? 'flex w-full' : 'grid grid-cols-2',
+      )}
+      aria-label="Inventory workspace"
+    >
+      {[
+        { value: 'experimental' as const, label: shortLabels ? 'Exp' : 'Experimental', icon: FlaskConical },
+        { value: 'computational' as const, label: shortLabels ? 'Comp' : 'Computational', icon: Database },
+      ].map(({ value, label, icon: Icon }) => {
+        const on = mode === value
+        return (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setMode(value)}
+            className={cx(
+              'flex min-w-0 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors',
+              on
+                ? 'bg-white text-pearl-800 shadow-sm ring-1 ring-ink-200 dark:bg-ink-800 dark:text-pearl-200 dark:ring-ink-700'
+                : 'text-ink-500 hover:text-ink-800 dark:text-ink-400 dark:hover:text-ink-100',
+            )}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 function useTheme() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
@@ -54,6 +163,54 @@ function ThemeToggle() {
     >
       {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
     </button>
+  )
+}
+
+function SidebarWidthControl({
+  value,
+  onChange,
+}: {
+  value: SidebarWidth
+  onChange: (value: SidebarWidth) => void
+}) {
+  const widths: SidebarWidth[] = ['compact', 'comfortable', 'wide']
+  const index = widths.indexOf(value)
+
+  function setWidth(next: SidebarWidth) {
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, next)
+    } catch {
+      /* preference still changes for this view */
+    }
+    onChange(next)
+  }
+
+  return (
+    <div className="hidden items-center gap-1 rounded-lg border border-ink-200 bg-white p-1 lg:flex dark:border-ink-800 dark:bg-ink-900">
+      <button
+        type="button"
+        className="btn-ghost p-1.5"
+        onClick={() => setWidth(widths[Math.max(0, index - 1)])}
+        disabled={index === 0}
+        title="Narrower sidebar"
+        aria-label="Narrower sidebar"
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <span className="w-16 text-center text-[11px] font-medium capitalize text-ink-500">
+        {value}
+      </span>
+      <button
+        type="button"
+        className="btn-ghost p-1.5"
+        onClick={() => setWidth(widths[Math.min(widths.length - 1, index + 1)])}
+        disabled={index === widths.length - 1}
+        title="Wider sidebar"
+        aria-label="Wider sidebar"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
   )
 }
 
@@ -142,16 +299,28 @@ function UserMenu() {
   )
 }
 
-function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+function SidebarContent({
+  onNavigate,
+  showWorkspaceSwitch = false,
+}: {
+  onNavigate?: () => void
+  showWorkspaceSwitch?: boolean
+}) {
   const { isAdmin } = useAuth()
-  const links = [...NAV, ...(isAdmin ? [{ to: '/members', label: 'Members', icon: Users, end: false }] : [])]
+  const location = useLocation()
+  const mode = workspaceFromPath(location.pathname)
+  const links = mode === 'computational' ? COMPUTATIONAL_NAV : NAV
 
   return (
     <>
-      <div className="px-3 py-4">
+      <div className="space-y-3 px-3 py-4">
         <Wordmark />
+        {showWorkspaceSwitch && <WorkspaceSwitch onSwitch={onNavigate} />}
       </div>
-      <nav className="flex-1 space-y-0.5 px-3">
+      <nav className="flex-1 space-y-1 px-3">
+        <p className="px-3 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-400">
+          {mode === 'computational' ? 'Computational' : 'Experimental'}
+        </p>
         {links.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
@@ -166,6 +335,15 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         ))}
       </nav>
       <div className="space-y-1 border-t border-ink-200 px-3 py-3 dark:border-ink-800">
+        {isAdmin && (
+          <NavLink
+            to="/members"
+            onClick={onNavigate}
+            className={({ isActive }) => cx('nav-link', isActive && 'nav-link-active')}
+          >
+            <Users className="h-4 w-4" /> Members
+          </NavLink>
+        )}
         <NavLink
           to="/settings"
           onClick={onNavigate}
@@ -202,6 +380,7 @@ export function DemoBanner() {
 
 export function AppShell({ children }: { children?: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState<SidebarWidth>(() => storedSidebarWidth())
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -237,7 +416,12 @@ export function AppShell({ children }: { children?: ReactNode }) {
   return (
     <div className="flex h-full">
       {/* Desktop sidebar */}
-      <aside className="no-print hidden w-60 shrink-0 flex-col border-r border-ink-200 bg-white lg:flex dark:border-ink-800 dark:bg-ink-900">
+      <aside
+        className={cx(
+          'app-chrome no-print hidden shrink-0 flex-col border-r border-ink-200 transition-[width] lg:flex dark:border-ink-800',
+          SIDEBAR_WIDTHS[sidebarWidth],
+        )}
+      >
         <SidebarContent />
       </aside>
 
@@ -248,14 +432,14 @@ export function AppShell({ children }: { children?: ReactNode }) {
             className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm animate-fade-in"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="relative flex h-full w-64 flex-col bg-white shadow-pop animate-slide-in-right dark:bg-ink-900">
-            <SidebarContent onNavigate={() => setMobileOpen(false)} />
+          <aside className="app-chrome relative flex h-full w-72 max-w-[88vw] flex-col shadow-pop animate-slide-in-right">
+            <SidebarContent onNavigate={() => setMobileOpen(false)} showWorkspaceSwitch />
           </aside>
         </div>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="no-print sticky top-0 z-30 flex items-center gap-2 border-b border-ink-200 bg-white/85 px-3 py-2.5 backdrop-blur sm:px-5 dark:border-ink-800 dark:bg-ink-900/85">
+        <header className="app-chrome no-print sticky top-0 z-30 flex items-center gap-2 border-b border-ink-200 px-3 py-2.5 backdrop-blur sm:px-5 dark:border-ink-800">
           <button
             className="btn-ghost p-2 lg:hidden"
             onClick={() => setMobileOpen(true)}
@@ -266,6 +450,10 @@ export function AppShell({ children }: { children?: ReactNode }) {
           <div className="lg:hidden">
             <Wordmark compact />
           </div>
+          <div className="hidden w-[28rem] max-w-[42vw] lg:block">
+            <WorkspaceSwitch compact />
+          </div>
+          <SidebarWidthControl value={sidebarWidth} onChange={setSidebarWidth} />
           <div className="flex-1" />
           <span className="hidden rounded-md border border-ink-200 px-2 py-1 text-[11px] text-ink-400 md:block dark:border-ink-700">
             Press <kbd className="font-mono font-semibold">/</kbd> to search

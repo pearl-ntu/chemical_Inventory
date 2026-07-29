@@ -16,6 +16,9 @@ import type {
   ChemicalInput,
   Invite,
   Profile,
+  ResearchAsset,
+  ResearchAssetChemicalLink,
+  ResearchAssetInput,
   Role,
 } from './types'
 import { nextCode } from './utils'
@@ -24,6 +27,14 @@ export class ApiError extends Error {}
 
 function fail(context: string, error: { message: string } | null): never {
   throw new ApiError(`${context}: ${error?.message ?? 'unknown error'}`)
+}
+
+function missingTable(error: { message?: string; code?: string } | null): boolean {
+  return (
+    error?.code === 'PGRST205' ||
+    error?.code === '42P01' ||
+    /Could not find the table|relation .* does not exist/i.test(error?.message ?? '')
+  )
 }
 
 /**
@@ -412,6 +423,7 @@ export const api = {
       system: r.system,
       supplier: r.supplier,
       catalog_no: null,
+      batch_no: null,
       location: r.location,
       sub_location: null,
       formula: null,
@@ -419,7 +431,11 @@ export const api = {
       structure_molfile: null,
       reaction_rxnfile: null,
       delivery_photo_path: null,
+      sds_url: null,
+      coa_url: null,
+      invoice_url: null,
       purity: null,
+      concentration: null,
       quantity: r.quantity,
       size_value: r.size_value,
       size_unit: r.size_unit,
@@ -432,6 +448,11 @@ export const api = {
       expiry_date: null,
       status: (r.status as Chemical['status']) ?? 'active',
       date_emptied: r.date_emptied,
+      disposal_date: null,
+      disposal_reason: null,
+      disposal_waste_class: null,
+      reorder_url: null,
+      reorder_priority: 'none',
       hazards: [],
       storage_class: null,
       remarks: r.remarks,
@@ -583,6 +604,172 @@ export const api = {
     const { error } = await requireSupabase().from('profiles').delete().eq('id', target.id)
     if (error) fail('Could not remove that member profile', error)
     await api.log(null, 'role_changed', details, actor)
+  },
+
+  async listResearchAssets(): Promise<ResearchAsset[]> {
+    if (!IS_CLOUD) return localDb.researchAssets()
+    const { data, error } = await requireSupabase()
+      .from('research_assets')
+      .select('*')
+      .order('updated_at', { ascending: false })
+    if (missingTable(error)) return localDb.researchAssets()
+    if (error) fail('Could not load research assets', error)
+    return ((data ?? []) as ResearchAsset[]).map((row) => ({
+      ...row,
+      description: row.description ?? null,
+      source_external_id: row.source_external_id ?? null,
+      external_path: row.external_path ?? null,
+      size_bytes: row.size_bytes ?? null,
+      tags: row.tags ?? [],
+      visibility: row.visibility ?? 'lab',
+    }))
+  },
+
+  async listResearchAssetChemicalLinks(): Promise<ResearchAssetChemicalLink[]> {
+    if (!IS_CLOUD) return localDb.researchAssetChemicalLinks()
+    const { data, error } = await requireSupabase()
+      .from('research_asset_chemicals')
+      .select('research_asset_id, chemical_id, chemicals(name)')
+    if (missingTable(error)) return localDb.researchAssetChemicalLinks()
+    if (error) fail('Could not load computational links', error)
+    return ((data ?? []) as Array<{
+      research_asset_id: string
+      chemical_id: string
+      chemicals?: { name?: string | null } | null
+    }>).map((row) => ({
+      research_asset_id: row.research_asset_id,
+      chemical_id: row.chemical_id,
+      chemical_name: row.chemicals?.name ?? null,
+    }))
+  },
+
+  async listResearchAssetsForChemical(chemicalId: string): Promise<ResearchAsset[]> {
+    const [assets, links] = await Promise.all([
+      api.listResearchAssets(),
+      api.listResearchAssetChemicalLinks(),
+    ])
+    const linkedIds = new Set(
+      links.filter((row) => row.chemical_id === chemicalId).map((row) => row.research_asset_id),
+    )
+    return assets.filter((asset) => asset.related_chemical_id === chemicalId || linkedIds.has(asset.id))
+  },
+
+  async setResearchAssetChemicals(assetId: string, chemicalIds: string[]): Promise<void> {
+    if (!IS_CLOUD) {
+      localDb.setResearchAssetChemicals(assetId, chemicalIds)
+      return
+    }
+
+    const sb = requireSupabase()
+    const { error: deleteError } = await sb
+      .from('research_asset_chemicals')
+      .delete()
+      .eq('research_asset_id', assetId)
+    if (missingTable(deleteError)) {
+      localDb.setResearchAssetChemicals(assetId, chemicalIds)
+      return
+    }
+    if (deleteError) fail('Could not update computational links', deleteError)
+    if (chemicalIds.length === 0) return
+    const { error } = await sb.from('research_asset_chemicals').insert(
+      chemicalIds.map((chemical_id) => ({
+        research_asset_id: assetId,
+        chemical_id,
+      })),
+    )
+    if (error) fail('Could not save computational links', error)
+  },
+
+  async createResearchAsset(input: ResearchAssetInput, actor: Profile): Promise<ResearchAsset> {
+    if (!IS_CLOUD) {
+      const row = localDb.insertResearchAsset(input, actor)
+      logLocal(null, 'created', `Added research asset ${row.title}`, actor)
+      return row
+    }
+    const { data, error } = await requireSupabase()
+      .from('research_assets')
+      .insert({ ...input, created_by: actor.id, created_by_name: actor.full_name })
+      .select()
+      .single()
+    if (missingTable(error)) {
+      const row = localDb.insertResearchAsset(input, actor)
+      logLocal(null, 'created', `Added local research asset ${row.title}`, actor)
+      return row
+    }
+    if (error) fail('Could not add research asset', error)
+    await api.log(null, 'created', `Added research asset ${input.title}`, actor)
+    return { ...(data as ResearchAsset), visibility: (data as ResearchAsset).visibility ?? 'lab' }
+  },
+
+  async upsertResearchAsset(input: ResearchAssetInput, actor: Profile): Promise<ResearchAsset> {
+    if (!input.source || !input.source_external_id) return api.createResearchAsset(input, actor)
+    if (!IS_CLOUD) {
+      const existing = localDb
+        .researchAssets()
+        .find((row) => row.created_by === actor.id && row.source === input.source && row.source_external_id === input.source_external_id)
+      const row = existing
+        ? localDb.updateResearchAsset(existing.id, input)
+        : localDb.insertResearchAsset(input, actor)
+      logLocal(null, existing ? 'updated' : 'created', `${existing ? 'Updated' : 'Added'} research asset ${row.title}`, actor)
+      return row
+    }
+    const { data, error } = await requireSupabase()
+      .from('research_assets')
+      .upsert({ ...input, created_by: actor.id, created_by_name: actor.full_name }, { onConflict: 'created_by,source,source_external_id' })
+      .select()
+      .single()
+    if (missingTable(error)) {
+      const row = localDb.insertResearchAsset(input, actor)
+      logLocal(null, 'created', `Added local research asset ${row.title}`, actor)
+      return row
+    }
+    if (error) fail('Could not save research asset', error)
+    const row = { ...(data as ResearchAsset), visibility: (data as ResearchAsset).visibility ?? 'lab' }
+    await api.log(null, 'updated', `Synced research asset ${row.title}`, actor)
+    return row
+  },
+
+  async updateResearchAsset(
+    id: string,
+    patch: Partial<ResearchAsset>,
+    actor: Profile,
+  ): Promise<ResearchAsset> {
+    if (!IS_CLOUD) {
+      const row = localDb.updateResearchAsset(id, patch)
+      logLocal(null, 'updated', `Updated research asset ${row.title}`, actor)
+      return row
+    }
+    const { data, error } = await requireSupabase()
+      .from('research_assets')
+      .update(patch)
+      .eq('id', id)
+      .select()
+      .single()
+    if (missingTable(error)) {
+      const row = localDb.updateResearchAsset(id, patch)
+      logLocal(null, 'updated', `Updated local research asset ${row.title}`, actor)
+      return row
+    }
+    if (error) fail('Could not update research asset', error)
+    const row = { ...(data as ResearchAsset), visibility: (data as ResearchAsset).visibility ?? 'lab' }
+    await api.log(null, 'updated', `Updated research asset ${row.title}`, actor)
+    return row
+  },
+
+  async deleteResearchAsset(row: ResearchAsset, actor: Profile): Promise<void> {
+    if (!IS_CLOUD) {
+      localDb.deleteResearchAsset(row.id)
+      logLocal(null, 'deleted', `Deleted research asset ${row.title}`, actor)
+      return
+    }
+    const { error } = await requireSupabase().from('research_assets').delete().eq('id', row.id)
+    if (missingTable(error)) {
+      localDb.deleteResearchAsset(row.id)
+      logLocal(null, 'deleted', `Deleted local research asset ${row.title}`, actor)
+      return
+    }
+    if (error) fail('Could not delete research asset', error)
+    await api.log(null, 'deleted', `Deleted research asset ${row.title}`, actor)
   },
 
   /** Live updates so two people at two benches see the same shelf. */

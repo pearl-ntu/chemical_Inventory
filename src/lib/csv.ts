@@ -1,4 +1,4 @@
-import type { Chemical, ChemicalInput, Status } from './types'
+import type { Chemical, ChemicalInput, ResearchAsset, ResearchAssetInput, Status } from './types'
 import { todayISO } from './utils'
 
 /** RFC-4180 parser: handles quoted fields, embedded commas, and "" escapes. */
@@ -279,6 +279,7 @@ export function rowsToChemicals(table: string[][]): ImportResult {
       system: raw.system || null,
       supplier: raw.supplier || null,
       catalog_no: raw.catalog_no || null,
+      batch_no: raw.batch_no || null,
       location: raw.location || null,
       sub_location: raw.sub_location || null,
       formula: raw.formula || null,
@@ -286,7 +287,11 @@ export function rowsToChemicals(table: string[][]): ImportResult {
       structure_molfile: null,
       reaction_rxnfile: null,
       delivery_photo_path: null,
+      sds_url: null,
+      coa_url: null,
+      invoice_url: null,
       purity: raw.purity || null,
+      concentration: raw.concentration || null,
       quantity: raw.quantity ? (toNumber(raw.quantity) ?? 1) : 1,
       size_value: raw.size_value ? toNumber(raw.size_value) : null,
       size_unit: raw.size_unit || 'g',
@@ -299,6 +304,11 @@ export function rowsToChemicals(table: string[][]): ImportResult {
       expiry_date: raw.expiry_date ? toDate(raw.expiry_date) : null,
       status: VALID_STATUS.includes(status) ? status : 'active',
       date_emptied: raw.date_emptied ? toDate(raw.date_emptied) : null,
+      disposal_date: null,
+      disposal_reason: null,
+      disposal_waste_class: null,
+      reorder_url: null,
+      reorder_priority: 'none',
       hazards: raw.hazards
         ? raw.hazards
             .split(/[;,|]/)
@@ -312,4 +322,129 @@ export function rowsToChemicals(table: string[][]): ImportResult {
   }
 
   return { rows, ignoredColumns, errors }
+}
+
+const ASSET_COLUMNS = [
+  'type',
+  'title',
+  'description',
+  'project',
+  'owner',
+  'source',
+  'storage_link',
+  'size_label',
+  'size_bytes',
+  'format',
+  'method',
+  'software',
+  'repo_link',
+  'output_link',
+  'tags',
+  'status',
+  'visibility',
+  'last_verified_at',
+  'notes',
+] as const
+
+export function researchAssetsToCSV(rows: ResearchAsset[]): string {
+  const head = ASSET_COLUMNS.map(esc).join(',')
+  const body = rows.map((row) =>
+    ASSET_COLUMNS.map((column) => {
+      const value = row[column as keyof ResearchAsset]
+      return esc(Array.isArray(value) ? value.join('; ') : value)
+    }).join(','),
+  )
+  return [head, ...body].join('\n')
+}
+
+export function researchAssetTemplateCSV(): string {
+  return [
+    ASSET_COLUMNS.map(esc).join(','),
+    [
+      'dataset',
+      'TDDFT emission dataset',
+      'Metadata pointer to calculated spectra and input/output files',
+      'Lanthanide emitters',
+      'Your Name',
+      'manual',
+      '/home/user/calculations/tddft/emission-dataset',
+      '2.4 GB',
+      '',
+      'csv; log',
+      'TD-DFT',
+      'ORCA',
+      'https://github.com/group/repo',
+      '',
+      'emission; tddft; spectra',
+      'active',
+      'lab',
+      todayISO(),
+      'Do not upload raw files here.',
+    ].map(esc).join(','),
+  ].join('\n')
+}
+
+export interface ResearchAssetImportResult {
+  rows: ResearchAssetInput[]
+  errors: Array<{ line: number; message: string }>
+}
+
+export function rowsToResearchAssets(table: string[][], fallbackOwner: string): ResearchAssetImportResult {
+  const errors: ResearchAssetImportResult['errors'] = []
+  const rows: ResearchAssetInput[] = []
+  if (table.length < 2) return { rows, errors: [{ line: 0, message: 'The file has no data rows.' }] }
+  const header = table[0].map((h) => h.toLowerCase().trim().replace(/[\s-]+/g, '_'))
+  const idx = (name: string) => header.indexOf(name)
+  const cell = (cells: string[], name: string) => {
+    const i = idx(name)
+    return i >= 0 ? (cells[i] ?? '').trim() : ''
+  }
+
+  for (let r = 1; r < table.length; r++) {
+    const cells = table[r]
+    const title = cell(cells, 'title') || cell(cells, 'name')
+    if (!title) {
+      errors.push({ line: r + 1, message: 'Skipped - no title.' })
+      continue
+    }
+    const type = (cell(cells, 'type') || 'dataset').toLowerCase()
+    const status = (cell(cells, 'status') || 'active').toLowerCase()
+    rows.push({
+      type: ['dataset', 'model', 'simulation', 'code', 'notebook', 'compute', 'sample', 'publication', 'other'].includes(type)
+        ? (type as ResearchAssetInput['type'])
+        : 'dataset',
+      title,
+      description: cell(cells, 'description') || null,
+      project: cell(cells, 'project') || null,
+      owner: cell(cells, 'owner') || fallbackOwner,
+      related_chemical_id: null,
+      related_chemical_name: null,
+      source: cell(cells, 'source') || 'manual',
+      source_external_id: cell(cells, 'source_external_id') || null,
+      external_path: cell(cells, 'external_path') || null,
+      storage_link: cell(cells, 'storage_link') || cell(cells, 'link') || null,
+      size_bytes: cell(cells, 'size_bytes') ? Number(cell(cells, 'size_bytes')) : null,
+      size_label: cell(cells, 'size_label') || cell(cells, 'size') || null,
+      format: cell(cells, 'format') || null,
+      license: cell(cells, 'license') || null,
+      checksum: cell(cells, 'checksum') || null,
+      version: cell(cells, 'version') || null,
+      tags: (cell(cells, 'tags') || '').split(/[;,]/).map((tag) => tag.trim()).filter(Boolean),
+      method: cell(cells, 'method') || null,
+      software: cell(cells, 'software') || null,
+      input_link: cell(cells, 'input_link') || null,
+      output_link: cell(cells, 'output_link') || null,
+      repo_link: cell(cells, 'repo_link') || null,
+      environment: cell(cells, 'environment') || null,
+      metrics: cell(cells, 'metrics') || null,
+      access_notes: cell(cells, 'access_notes') || null,
+      status: ['active', 'running', 'complete', 'failed', 'archived'].includes(status)
+        ? (status as ResearchAssetInput['status'])
+        : 'active',
+      visibility: cell(cells, 'visibility') === 'private' ? 'private' : 'lab',
+      notes: cell(cells, 'notes') || null,
+      last_verified_at: cell(cells, 'last_verified_at') || todayISO(),
+    })
+  }
+  return { rows, errors }
 }

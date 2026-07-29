@@ -6,6 +6,7 @@ import {
   Camera,
   CircleSlash,
   Copy,
+  Database,
   ExternalLink,
   FileText,
   MapPin,
@@ -17,10 +18,11 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
+import { api } from '../lib/api'
 import { resolveDeliveryPhotoUrl } from '../lib/deliveryPhoto'
 import * as pubchem from '../lib/pubchem'
 import { qrDataUrl } from '../lib/qr'
-import { STATUS_LABEL, type Chemical } from '../lib/types'
+import { STATUS_LABEL, type Chemical, type ResearchAsset } from '../lib/types'
 import { cx, formatDate, formatSize, statusTone } from '../lib/utils'
 import { HazardBadges } from './HazardBadges'
 import { LazyMolfileSvgRenderer, LazyReactionViewer } from './LazyStructure'
@@ -62,6 +64,7 @@ export function ChemicalDrawer({
   const [qr, setQr] = useState<string | null>(null)
   const [info, setInfo] = useState<pubchem.PubChemInfo | null>(null)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [relatedAssets, setRelatedAssets] = useState<ResearchAsset[]>([])
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -69,11 +72,18 @@ export function ChemicalDrawer({
     setQr(null)
     setInfo(null)
     setPhotoUrl(null)
+    setRelatedAssets([])
     if (!chemical) return
 
     let live = true
     void qrDataUrl(chemical.code, 220).then((url) => live && setQr(url))
     void pubchem.lookup(chemical.cas, chemical.name).then((res) => live && setInfo(res))
+    void api
+      .listResearchAssetsForChemical(chemical.id)
+      .then((rows) => live && setRelatedAssets(rows))
+      .catch(() => {
+        if (live) setRelatedAssets([])
+      })
     if (chemical.delivery_photo_path) {
       void resolveDeliveryPhotoUrl(chemical.delivery_photo_path)
         .then((url) => live && setPhotoUrl(url))
@@ -295,6 +305,38 @@ export function ChemicalDrawer({
                 <Suspense fallback={<Spinner className="h-5 w-5 text-ink-300" />}>
                   <LazyReactionViewer rxnfile={c.reaction_rxnfile} />
                 </Suspense>
+              </div>
+            </div>
+          )}
+
+          {/* computational links ------------------------------------------- */}
+          {relatedAssets.length > 0 && (
+            <div className="card p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-400">
+                <Database className="h-3.5 w-3.5" /> Related computational assets
+              </p>
+              <div className="space-y-2">
+                {relatedAssets.slice(0, 6).map((asset) => (
+                  <div key={asset.id} className="rounded-lg border border-ink-200 p-2.5 dark:border-ink-800">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="badge bg-pearl-50 text-pearl-700 ring-pearl-600/20 dark:bg-pearl-500/10 dark:text-pearl-300">
+                        {asset.type}
+                      </span>
+                      {asset.source && (
+                        <span className="badge bg-ink-100 text-ink-600 ring-ink-500/20 dark:bg-ink-800 dark:text-ink-300">
+                          {asset.source}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-sm font-semibold text-ink-900 dark:text-ink-50">{asset.title}</p>
+                    <p className="mt-0.5 text-xs text-ink-500">
+                      {[asset.project, asset.owner, asset.software].filter(Boolean).join(' - ') || 'No extra metadata'}
+                    </p>
+                  </div>
+                ))}
+                {relatedAssets.length > 6 && (
+                  <p className="text-xs text-ink-400">+{relatedAssets.length - 6} more linked assets</p>
+                )}
               </div>
             </div>
           )}

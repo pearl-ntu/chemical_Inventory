@@ -8,7 +8,15 @@
  * It is NOT a substitute for the real thing: data never leaves the browser, so
  * nothing is shared between people. The UI says so, loudly.
  */
-import type { ActivityEntry, Chemical, Profile, Role } from './types'
+import type {
+  ActivityEntry,
+  Chemical,
+  Profile,
+  ResearchAsset,
+  ResearchAssetChemicalLink,
+  ResearchAssetInput,
+  Role,
+} from './types'
 import { SEED_ROWS } from './seedData'
 import { nextCode, todayISO } from './utils'
 
@@ -17,6 +25,8 @@ const K = {
   activity: 'pearl.demo.activity',
   users: 'pearl.demo.users',
   session: 'pearl.demo.session',
+  researchAssets: 'pearl.demo.research_assets',
+  researchAssetChemicals: 'pearl.demo.research_asset_chemicals',
 } as const
 
 interface DemoUser extends Profile {
@@ -62,6 +72,7 @@ function seedChemicals(): Chemical[] {
     system: r.system,
     supplier: r.supplier,
     catalog_no: null,
+    batch_no: null,
     location: r.location,
     sub_location: null,
     formula: null,
@@ -69,7 +80,11 @@ function seedChemicals(): Chemical[] {
     structure_molfile: null,
     reaction_rxnfile: null,
     delivery_photo_path: null,
+    sds_url: null,
+    coa_url: null,
+    invoice_url: null,
     purity: null,
+    concentration: null,
     quantity: r.quantity,
     size_value: r.size_value,
     size_unit: r.size_unit,
@@ -82,6 +97,11 @@ function seedChemicals(): Chemical[] {
     expiry_date: null,
     status: (r.status as Chemical['status']) ?? 'active',
     date_emptied: r.date_emptied,
+    disposal_date: null,
+    disposal_reason: null,
+    disposal_waste_class: null,
+    reorder_url: null,
+    reorder_priority: 'none',
     hazards: [],
     storage_class: null,
     remarks: r.remarks,
@@ -213,6 +233,75 @@ export const localDb = {
 
   setRole(id: string, role: Role): Profile {
     return localDb.updateUser(id, { role })
+  },
+
+  researchAssets(): ResearchAsset[] {
+    return read<ResearchAsset[]>(K.researchAssets, []).map((row) => ({
+      ...row,
+      description: row.description ?? null,
+      source_external_id: row.source_external_id ?? null,
+      external_path: row.external_path ?? null,
+      size_bytes: row.size_bytes ?? null,
+      tags: row.tags ?? [],
+      visibility: row.visibility ?? 'lab',
+    }))
+  },
+
+  saveResearchAssets(rows: ResearchAsset[]) {
+    write(K.researchAssets, rows)
+  },
+
+  insertResearchAsset(input: ResearchAssetInput, actor: Profile): ResearchAsset {
+    const rows = localDb.researchAssets()
+    const now = new Date().toISOString()
+    const row: ResearchAsset = {
+      ...input,
+      id: uid(),
+      created_by: actor.id,
+      created_by_name: actor.full_name,
+      created_at: now,
+      updated_at: now,
+    }
+    localDb.saveResearchAssets([row, ...rows])
+    return row
+  },
+
+  updateResearchAsset(id: string, patch: Partial<ResearchAsset>): ResearchAsset {
+    const rows = localDb.researchAssets()
+    const idx = rows.findIndex((r) => r.id === id)
+    if (idx === -1) throw new Error('Research asset not found')
+    const updated = { ...rows[idx], ...patch, updated_at: new Date().toISOString() }
+    rows[idx] = updated
+    localDb.saveResearchAssets(rows)
+    return updated
+  },
+
+  deleteResearchAsset(id: string) {
+    localDb.saveResearchAssets(localDb.researchAssets().filter((r) => r.id !== id))
+    localDb.saveResearchAssetChemicalLinks(
+      localDb.researchAssetChemicalLinks().filter((r) => r.research_asset_id !== id),
+    )
+  },
+
+  researchAssetChemicalLinks(): ResearchAssetChemicalLink[] {
+    return read<ResearchAssetChemicalLink[]>(K.researchAssetChemicals, [])
+  },
+
+  saveResearchAssetChemicalLinks(rows: ResearchAssetChemicalLink[]) {
+    write(K.researchAssetChemicals, rows)
+  },
+
+  setResearchAssetChemicals(assetId: string, chemicalIds: string[]) {
+    const chemicals = localDb.chemicals()
+    const nextLinks = chemicalIds.map((chemicalId) => ({
+      research_asset_id: assetId,
+      chemical_id: chemicalId,
+      chemical_name: chemicals.find((c) => c.id === chemicalId)?.name ?? null,
+    }))
+    const others = localDb
+      .researchAssetChemicalLinks()
+      .filter((row) => row.research_asset_id !== assetId)
+    localDb.saveResearchAssetChemicalLinks([...others, ...nextLinks])
   },
 
   session(): Profile | null {
