@@ -47,7 +47,7 @@ const COMPUTATIONAL_NAV = [
   { to: '/computational', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/computational/workbench', label: 'Workbench', icon: Bot, end: false },
   { to: '/research-assets', label: 'Research Assets', icon: Database, end: false },
-  { to: '/project-map', label: 'Project Map', icon: GitBranch, end: false },
+  { to: '/computational/project-map', label: 'Project Map', icon: GitBranch, end: false },
   { to: '/computational/hpc-sync', label: 'Linux/HPC Sync', icon: Server, end: false },
   { to: '/computational/hpc-tutorial', label: 'HPC Tutorial', icon: BookOpen, end: false },
   { to: '/computational/analytics', label: 'Analytics', icon: BarChart3, end: false },

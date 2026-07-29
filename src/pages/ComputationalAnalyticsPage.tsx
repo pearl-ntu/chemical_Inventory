@@ -4,7 +4,9 @@ import { Check, Database } from 'lucide-react'
 import { BarList, Timeline } from '../components/charts'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen } from '../components/ui'
+import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
+import { privateResearchAssets } from '../lib/researchAssetPrivacy'
 import type { ResearchAsset, ResearchAssetChemicalLink, ResearchAssetVersion } from '../lib/types'
 import { cx, formatDate } from '../lib/utils'
 
@@ -66,6 +68,7 @@ function daysSince(date: string | null) {
 
 export default function ComputationalAnalyticsPage() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const [assets, setAssets] = useState<ResearchAsset[]>([])
   const [links, setLinks] = useState<ResearchAssetChemicalLink[]>([])
   const [versions, setVersions] = useState<ResearchAssetVersion[]>([])
@@ -75,13 +78,15 @@ export default function ComputationalAnalyticsPage() {
   useEffect(() => {
     Promise.all([api.listResearchAssets(), api.listResearchAssetChemicalLinks(), api.listResearchAssetVersions()])
       .then(([assetRows, linkRows, versionRows]) => {
-        setAssets(assetRows)
-        setLinks(linkRows)
-        setVersions(versionRows)
+        const privateRows = privateResearchAssets(assetRows, profile)
+        const privateIds = new Set(privateRows.map((row) => row.id))
+        setAssets(privateRows)
+        setLinks(linkRows.filter((link) => privateIds.has(link.research_asset_id)))
+        setVersions(versionRows.filter((version) => privateIds.has(version.research_asset_id)))
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false))
-  }, [])
+  }, [profile])
 
   const data = useMemo(() => {
     const datasets = assets.filter((asset) => asset.type === 'dataset')
@@ -149,7 +154,7 @@ export default function ComputationalAnalyticsPage() {
     <>
       <PageHeader
         title="Computational Analytics"
-        description="Storage coverage, duplicate datasets, metadata quality, and cleanup queues for research assets."
+        description="Private storage coverage, duplicate datasets, metadata quality, and cleanup queues for your research assets."
         actions={
           <button className="btn-primary" onClick={() => navigate('/research-assets')}>
             <Database className="h-4 w-4" /> Open registry

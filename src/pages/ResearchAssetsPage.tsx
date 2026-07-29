@@ -33,6 +33,7 @@ import {
   researchAssetsToCSV,
   rowsToResearchAssets,
 } from '../lib/csv'
+import { privateResearchAssets } from '../lib/researchAssetPrivacy'
 import {
   ASSET_STATUSES,
   ASSET_TYPES,
@@ -245,10 +246,12 @@ export default function ResearchAssetsPage() {
         api.listResearchAssetVersions(),
         api.listResearchAssetLinks(),
       ])
-      setAssets(assetRows)
-      setLinks(linkRows)
-      setVersions(versionRows)
-      setAssetLinks(lineageRows)
+      const privateRows = privateResearchAssets(assetRows, profile)
+      const privateIds = new Set(privateRows.map((row) => row.id))
+      setAssets(privateRows)
+      setLinks(linkRows.filter((link) => privateIds.has(link.research_asset_id)))
+      setVersions(versionRows.filter((version) => privateIds.has(version.research_asset_id)))
+      setAssetLinks(lineageRows.filter((row) => privateIds.has(row.source_asset_id) && privateIds.has(row.target_asset_id)))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not load research assets.')
     } finally {

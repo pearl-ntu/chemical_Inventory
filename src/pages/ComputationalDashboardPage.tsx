@@ -4,7 +4,9 @@ import { AlertTriangle, Check, Database, Link2, Plus, Server, Tags } from 'lucid
 import { BarList, Timeline } from '../components/charts'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen } from '../components/ui'
+import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
+import { privateResearchAssets } from '../lib/researchAssetPrivacy'
 import type { ResearchAsset, ResearchAssetChemicalLink } from '../lib/types'
 import { cx, formatDate } from '../lib/utils'
 
@@ -29,6 +31,7 @@ function tally(rows: ResearchAsset[], get: (a: ResearchAsset) => string | null, 
 
 export default function ComputationalDashboardPage() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const [assets, setAssets] = useState<ResearchAsset[]>([])
   const [links, setLinks] = useState<ResearchAssetChemicalLink[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,15 +39,17 @@ export default function ComputationalDashboardPage() {
   useEffect(() => {
     Promise.all([api.listResearchAssets(), api.listResearchAssetChemicalLinks()])
       .then(([assetRows, linkRows]) => {
-        setAssets(assetRows)
-        setLinks(linkRows)
+        const privateRows = privateResearchAssets(assetRows, profile)
+        const privateIds = new Set(privateRows.map((row) => row.id))
+        setAssets(privateRows)
+        setLinks(linkRows.filter((link) => privateIds.has(link.research_asset_id)))
       })
       .catch(() => {
         setAssets([])
         setLinks([])
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [profile])
 
   const stats = useMemo(() => {
     const linked = new Set(links.map((link) => link.research_asset_id))
@@ -108,7 +113,7 @@ export default function ComputationalDashboardPage() {
     <>
       <PageHeader
         title="Computational Dashboard"
-        description="What exists, what may be duplicated, and what needs metadata before the group can reuse it."
+        description="Your private computational records, cleanup queue, and reusable metadata health."
         actions={
           <>
             <button className="btn-secondary" onClick={() => navigate('/computational/storage')}>

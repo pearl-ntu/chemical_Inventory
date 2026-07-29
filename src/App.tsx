@@ -75,6 +75,7 @@ export default function App() {
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="computational" element={<ComputationalDashboardPage />} />
           <Route path="computational/workbench" element={<ComputationalWorkbenchPage />} />
+          <Route path="computational/project-map" element={<ProjectMapPage workspace="computational" />} />
           <Route path="computational/analytics" element={<ComputationalAnalyticsPage />} />
           <Route path="computational/activity" element={<ComputationalActivityPage />} />
           <Route path="computational/hpc-sync" element={<HpcSyncPage />} />

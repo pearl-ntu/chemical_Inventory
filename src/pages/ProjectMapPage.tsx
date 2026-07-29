@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Database, FlaskConical, Link2, Search, Users } from 'lucide-react'
+import { Activity, Database, FlaskConical, Link2, Search, Server, Users } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen, SearchInput } from '../components/ui'
 import { useInventory } from '../context/InventoryContext'
@@ -31,7 +31,7 @@ interface ProjectGroup {
   missing: string[]
 }
 
-export default function ProjectMapPage() {
+export default function ProjectMapPage({ workspace = 'experimental' }: { workspace?: 'experimental' | 'computational' }) {
   const { chemicals, loading: inventoryLoading } = useInventory()
   const [assets, setAssets] = useState<ResearchAsset[]>([])
   const [loadingAssets, setLoadingAssets] = useState(true)
@@ -95,12 +95,42 @@ export default function ProjectMapPage() {
 
   if (inventoryLoading || loadingAssets) return <LoadingScreen label="Drawing project map..." />
 
+  const totals = projects.reduce(
+    (sum, project) => ({
+      projects: sum.projects + 1,
+      chemicals: sum.chemicals + project.chemicals.length,
+      assets: sum.assets + project.assets.length,
+      bytes: sum.bytes + project.storageBytes,
+      gaps: sum.gaps + project.missing.length,
+    }),
+    { projects: 0, chemicals: 0, assets: 0, bytes: 0, gaps: 0 },
+  )
+
+  const isComputational = workspace === 'computational'
+
   return (
     <>
       <PageHeader
-        title="Project Map"
-        description="Wet-lab chemicals, computational assets, owners, and cleanup gaps grouped by project."
+        title={isComputational ? 'Computational Project Map' : 'Project Map'}
+        description={
+          isComputational
+            ? 'Shared project bridge: wet-lab chemicals, computational assets, owners, storage pointers, and cleanup gaps.'
+            : 'Wet-lab chemicals, computational assets, owners, and cleanup gaps grouped by project.'
+        }
       />
+
+      <div className="mb-4 grid gap-3 md:grid-cols-4">
+        <MetricCard icon={<Activity className="h-4 w-4" />} label="Projects" value={totals.projects} />
+        <MetricCard icon={<FlaskConical className="h-4 w-4" />} label="Chemicals" value={totals.chemicals} />
+        <MetricCard icon={<Database className="h-4 w-4" />} label="Comp assets" value={totals.assets} />
+        <MetricCard icon={<Server className="h-4 w-4" />} label="Tracked storage" value={totals.bytes ? formatBytes(totals.bytes) : 'Unknown'} tone={totals.gaps ? 'warning' : 'default'} />
+      </div>
+
+      {isComputational && (
+        <div className="mb-4 rounded-lg border border-pearl-200 bg-pearl-50 px-4 py-3 text-sm text-pearl-900 dark:border-pearl-500/25 dark:bg-pearl-500/10 dark:text-pearl-100">
+          This map is intentionally collaborative. It shows project-level links across experimental and computational work; detailed computational pages remain member-scoped.
+        </div>
+      )}
 
       <div className="mb-4 max-w-xl">
         <SearchInput value={q} onChange={setQ} placeholder="Search projects, people, chemicals, or assets..." />
@@ -158,6 +188,28 @@ export default function ProjectMapPage() {
         </div>
       )}
     </>
+  )
+}
+
+function MetricCard({
+  icon,
+  label,
+  value,
+  tone = 'default',
+}: {
+  icon: ReactNode
+  label: string
+  value: string | number
+  tone?: 'default' | 'warning'
+}) {
+  return (
+    <div className="card flex items-center gap-3 p-4">
+      <span className={tone === 'warning' ? 'text-amber-600' : 'text-pearl-600'}>{icon}</span>
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">{label}</p>
+        <p className="mt-1 truncate text-lg font-bold text-ink-900 dark:text-ink-50">{value}</p>
+      </div>
+    </div>
   )
 }
 
