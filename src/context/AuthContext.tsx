@@ -69,6 +69,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async signOut() {
         await auth.signOut()
+        try {
+          sessionStorage.removeItem('pearl.new_chemical_draft')
+          localStorage.removeItem('pearl.new_chemical_draft')
+        } catch {
+          /* ignore unavailable browser storage */
+        }
         setProfile(null)
       },
       refresh,

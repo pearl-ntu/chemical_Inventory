@@ -20,7 +20,8 @@ const NEW_CHEMICAL_DRAFT_KEY = 'pearl.new_chemical_draft'
 
 function loadNewChemicalDraft(registeredBy: string): ChemicalInput {
   try {
-    const raw = localStorage.getItem(NEW_CHEMICAL_DRAFT_KEY)
+    localStorage.removeItem(NEW_CHEMICAL_DRAFT_KEY)
+    const raw = sessionStorage.getItem(NEW_CHEMICAL_DRAFT_KEY)
     if (raw) return { ...blank({}, registeredBy), ...(JSON.parse(raw) as Partial<ChemicalInput>) }
   } catch {
     /* ignore corrupt or unavailable browser storage */
@@ -30,7 +31,7 @@ function loadNewChemicalDraft(registeredBy: string): ChemicalInput {
 
 function saveNewChemicalDraft(form: ChemicalInput) {
   try {
-    localStorage.setItem(NEW_CHEMICAL_DRAFT_KEY, JSON.stringify(form))
+    sessionStorage.setItem(NEW_CHEMICAL_DRAFT_KEY, JSON.stringify(form))
   } catch {
     /* ignore quota/private browsing errors */
   }
@@ -38,6 +39,7 @@ function saveNewChemicalDraft(form: ChemicalInput) {
 
 function clearNewChemicalDraft() {
   try {
+    sessionStorage.removeItem(NEW_CHEMICAL_DRAFT_KEY)
     localStorage.removeItem(NEW_CHEMICAL_DRAFT_KEY)
   } catch {
     /* ignore unavailable browser storage */
@@ -194,6 +196,14 @@ export function ChemicalForm({
     setForm((f) => ({ ...f, [key]: value }))
   }
 
+  function resetDraft() {
+    clearNewChemicalDraft()
+    setErrors({})
+    setEnrichedInfo(null)
+    setForm(blank({}, profile?.full_name ?? ''))
+    toast.info('Draft cleared.')
+  }
+
   async function autofill() {
     if (!form.cas && !form.name.trim()) {
       toast.info('Enter a CAS number or a name first.')
@@ -281,6 +291,12 @@ export function ChemicalForm({
       }
       footer={
         <>
+          {!editing && (
+            <button className="btn-ghost mr-auto" onClick={resetDraft} disabled={busy}>
+              <X className="h-4 w-4" />
+              Reset draft
+            </button>
+          )}
           <button className="btn-secondary" onClick={onClose} disabled={busy}>
             Cancel
           </button>
