@@ -20,6 +20,7 @@ import LocationsPage from './pages/LocationsPage'
 import MembersPage from './pages/MembersPage'
 import OperationsPage from './pages/OperationsPage'
 import PendingApprovalPage from './pages/PendingApprovalPage'
+import ProjectMapPage from './pages/ProjectMapPage'
 import ResearchAssetsPage from './pages/ResearchAssetsPage'
 import SetPasswordPage from './pages/SetPasswordPage'
 import SettingsPage from './pages/SettingsPage'
@@ -70,6 +71,7 @@ export default function App() {
           <Route index element={<DashboardPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="locations" element={<LocationsPage />} />
+          <Route path="project-map" element={<ProjectMapPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="computational" element={<ComputationalDashboardPage />} />
           <Route path="computational/workbench" element={<ComputationalWorkbenchPage />} />

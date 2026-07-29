@@ -18,6 +18,16 @@ const DEFAULT_AGENT_ROOT = '/scratch/users/<ntu-or-sutd>/<account>/<project-fold
 const AGENT_COMMAND = `PEARL_AGENT_ROOT=${DEFAULT_AGENT_ROOT} PEARL_AGENT_TOKEN=choose-a-secret python3 ~/pearl_hpc_agent.py`
 const AGENT_WRITE_COMMAND = `PEARL_AGENT_ROOT=${DEFAULT_AGENT_ROOT} PEARL_AGENT_TOKEN=choose-a-secret PEARL_AGENT_ALLOW_WRITES=1 python3 ~/pearl_hpc_agent.py`
 const TUNNEL_COMMAND = 'ssh -L 8788:127.0.0.1:8787 <your-account>@aspire2antu.nscc.sg'
+const MANIFEST_TEMPLATE = `{
+  "project": "Lanthanide emitters",
+  "owner": "Your Name",
+  "system": "Eu complex run 04",
+  "software": "Gaussian",
+  "method": "TD-DFT",
+  "notes": "Metadata only. Raw files stay on HPC.",
+  "tags": ["hpc", "gaussian", "tddft"]
+}
+`
 
 export default function HpcTutorialPage() {
   const toast = useToast()
@@ -25,6 +35,10 @@ export default function HpcTutorialPage() {
 
   function downloadAgent() {
     download('pearl_hpc_agent.py', agentSource, 'text/x-python;charset=utf-8')
+  }
+
+  function downloadManifest() {
+    download('.pearl.json', MANIFEST_TEMPLATE, 'application/json;charset=utf-8')
   }
 
   async function copy(label: string, value: string) {
@@ -45,6 +59,9 @@ export default function HpcTutorialPage() {
             </Link>
             <button className="btn-primary" onClick={downloadAgent}>
               <Download className="h-4 w-4" /> Download agent
+            </button>
+            <button className="btn-secondary" onClick={downloadManifest}>
+              <Download className="h-4 w-4" /> Manifest
             </button>
           </>
         }
@@ -127,6 +144,14 @@ export default function HpcTutorialPage() {
             </div>
             <pre className="mt-2 overflow-auto rounded bg-ink-950 p-3 text-xs text-ink-50">{AGENT_WRITE_COMMAND}</pre>
             <p className="mt-2 text-xs text-ink-500">Use this only when you want the Quantum Input Generator to send generated job files into the selected PEARL_AGENT_ROOT folder.</p>
+          </div>
+          <div className="mt-3 rounded-lg border border-ink-200 p-3 text-sm dark:border-ink-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold text-ink-900 dark:text-ink-50">Optional .pearl.json folder manifest</p>
+              <button className="btn-secondary py-1.5 text-xs" onClick={downloadManifest}><Download className="h-3.5 w-3.5" /> Download</button>
+            </div>
+            <pre className="mt-2 overflow-auto rounded bg-ink-950 p-3 text-xs text-ink-50">{MANIFEST_TEMPLATE}</pre>
+            <p className="mt-2 text-xs text-ink-500">Put this file inside a calculation folder so the PEARL scanner imports cleaner project, owner, software, method, notes, and tags.</p>
           </div>
         </section>
       </div>

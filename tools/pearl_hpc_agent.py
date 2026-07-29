@@ -176,6 +176,35 @@ def parse_calculation(path):
     }
 
 
+def read_manifest(folder):
+    manifest_path = os.path.join(folder, ".pearl.json")
+    if not os.path.isfile(manifest_path):
+        return {}
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def manifest_text(manifest, key):
+    value = manifest.get(key)
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def manifest_tags(manifest):
+    tags = manifest.get("tags")
+    if isinstance(tags, list):
+        return [str(tag).strip() for tag in tags if str(tag).strip()]
+    if isinstance(tags, str):
+        return [tag.strip() for tag in re.split(r"[,;]", tags) if tag.strip()]
+    return []
+
+
 def aggregate_by_folder(files):
     groups = {}
     for row in files:
@@ -186,6 +215,7 @@ def aggregate_by_folder(files):
 
     summaries = []
     for folder, rows in sorted(groups.items()):
+        manifest = read_manifest(folder)
         rows = sorted(rows, key=lambda r: r.get("output_file") or "")
         main = None
         for row in rows:
@@ -206,9 +236,13 @@ def aggregate_by_folder(files):
         file_names = [os.path.basename(r.get("output_file") or "") for r in rows]
         notes = [
             "Folder summary imported by PEARL HPC agent.",
+            "Account: " + ACCOUNT_LABEL,
             "Files scanned: " + str(len(rows)),
             "Files: " + "; ".join(file_names[:40]),
         ]
+        manifest_notes = manifest_text(manifest, "notes")
+        if manifest_notes:
+            notes.insert(1, "Manifest notes: " + manifest_notes)
         if len(file_names) > 40:
             notes.append("Additional files omitted from note: " + str(len(file_names) - 40))
         if energies:
@@ -217,18 +251,31 @@ def aggregate_by_folder(files):
             notes.append("Warnings: " + "; ".join(warnings))
         stat_size = sum(int(r.get("size_bytes") or 0) for r in rows)
         latest = max([r.get("last_modified") for r in rows if r.get("last_modified")] or [""])
+        title = manifest_text(manifest, "system") or os.path.basename(folder) or os.path.basename(os.path.dirname(folder)) or "HPC calculation folder"
+        project = manifest_text(manifest, "project") or os.path.basename(folder)
+        owner = manifest_text(manifest, "owner") or ACCOUNT_LABEL
+        software = manifest_text(manifest, "software") or main.get("software")
+        method = manifest_text(manifest, "method") or main.get("method")
+        tags = ["hpc-sync"]
+        if software:
+            tags.append(str(software).lower())
+        for tag in manifest_tags(manifest):
+            if tag not in tags:
+                tags.append(tag)
         summaries.append(
             {
-                "title": os.path.basename(folder) or os.path.basename(os.path.dirname(folder)) or "HPC calculation folder",
-                "project": os.path.basename(folder),
+                "title": title,
+                "project": project,
+                "owner": owner,
                 "path": folder,
-                "software": main.get("software"),
-                "method": main.get("method"),
+                "software": software,
+                "method": method,
                 "status": status,
                 "output_file": main.get("output_file"),
                 "final_energy": main.get("final_energy"),
                 "warnings": warnings,
                 "notes": "\n".join(notes),
+                "tags": tags,
                 "size_bytes": stat_size,
                 "size_label": str(stat_size) + " bytes",
                 "last_modified": latest,
@@ -246,7 +293,7 @@ def scan(root):
         dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ("node_modules", ".git", "__pycache__")]
         for name in files:
             if count >= MAX_FILES:
-                return rows
+                return aggregate_by_folder(parsed_files)
             count += 1
             ext = os.path.splitext(name)[1].lower()
             if ext not in interesting_ext and name not in interesting_names:
