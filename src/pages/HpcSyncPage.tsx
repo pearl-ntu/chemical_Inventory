@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   CheckCircle2,
-  Clipboard,
   Database,
-  Download,
   FileText,
+  HelpCircle,
   Server,
   TerminalSquare,
   Upload,
@@ -15,8 +15,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { api } from '../lib/api'
 import type { ResearchAssetInput } from '../lib/types'
-import { download, todayISO } from '../lib/utils'
-import agentSource from '../../tools/pearl_hpc_agent.py?raw'
+import { todayISO } from '../lib/utils'
 
 interface ManifestJob {
   title?: string
@@ -207,10 +206,6 @@ function detectSoftware(job: ManifestJob) {
   return job.software || null
 }
 
-const DEFAULT_AGENT_ROOT = '/scratch'
-const AGENT_COMMAND = `PEARL_AGENT_ROOT=${DEFAULT_AGENT_ROOT} PEARL_AGENT_TOKEN=choose-a-secret python3 ~/pearl_hpc_agent.py`
-const TUNNEL_COMMAND = 'ssh -L 8788:127.0.0.1:8787 abedi@aspire2a'
-
 async function agentPost<T>(url: string, token: string, path: string, body: unknown): Promise<T> {
   const res = await fetch(`${url.replace(/\/$/, '')}${path}`, {
     method: 'POST',
@@ -278,20 +273,6 @@ export default function HpcSyncPage() {
     }
   }
 
-  async function copyCommand() {
-    await navigator.clipboard.writeText(AGENT_COMMAND)
-    toast.success('Agent command copied.')
-  }
-
-  async function copyTunnelCommand() {
-    await navigator.clipboard.writeText(TUNNEL_COMMAND)
-    toast.success('Tunnel command copied.')
-  }
-
-  function downloadAgent() {
-    download('pearl_hpc_agent.py', agentSource, 'text/x-python;charset=utf-8')
-  }
-
   async function runTerminalCommand(nextCommand = command) {
     const clean = nextCommand.trim()
     if (!clean) return
@@ -339,18 +320,12 @@ export default function HpcSyncPage() {
     <>
       <PageHeader
         title="Linux/HPC Sync"
-        description="Connect your HPC account through a read-only PEARL agent, browse files, and import calculation folders as research assets."
+        description="Work console for the read-only PEARL agent: inspect folders, scan calculations, and import folder summaries."
         actions={
           <>
-            <button className="btn-secondary" onClick={downloadAgent}>
-              <Download className="h-4 w-4" /> Agent
-            </button>
-            <button className="btn-secondary" onClick={() => void copyCommand()}>
-              <Clipboard className="h-4 w-4" /> Start
-            </button>
-            <button className="btn-secondary" onClick={() => void copyTunnelCommand()}>
-              <Clipboard className="h-4 w-4" /> Tunnel
-            </button>
+            <Link className="btn-secondary" to="/computational/hpc-tutorial">
+              <HelpCircle className="h-4 w-4" /> Tutorial
+            </Link>
             <button className="btn-primary" onClick={() => inputRef.current?.click()} disabled={busy}>
               {busy ? <Spinner /> : <Upload className="h-4 w-4" />} Manifest
             </button>
@@ -365,48 +340,7 @@ export default function HpcSyncPage() {
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-[0.88fr_1.12fr]">
-        <section className="card p-4">
-          <div className="flex items-start gap-3">
-            <span className="rounded-lg bg-pearl-50 p-2 text-pearl-700 dark:bg-pearl-500/10 dark:text-pearl-300">
-              <Server className="h-4 w-4" />
-            </span>
-            <div>
-              <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-50">First-time setup</h2>
-              <p className="mt-1 text-xs leading-relaxed text-ink-500">
-                Download the Python agent, place it anywhere in your Linux/HPC account, then point it at the folder you want PEARL to index.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-1 2xl:grid-cols-3">
-            <SetupStep
-              number="1"
-              title="Get agent"
-              text="Download pearl_hpc_agent.py from this page and upload it wherever convenient."
-              action={<button className="btn-primary py-1.5 text-xs" onClick={downloadAgent}><Download className="h-3.5 w-3.5" /> Download</button>}
-            />
-            <SetupStep
-              number="2"
-              title="Tunnel"
-              text="Run from your laptop. Replace abedi@aspire2a with your HPC login."
-              code={TUNNEL_COMMAND}
-              action={<button className="btn-secondary py-1.5 text-xs" onClick={() => void copyTunnelCommand()}><Clipboard className="h-3.5 w-3.5" /> Copy</button>}
-            />
-            <SetupStep
-              number="3"
-              title="Start"
-              text="Run on HPC. Replace /scratch with the folder you want to browse or scan."
-              code={AGENT_COMMAND}
-              action={<button className="btn-secondary py-1.5 text-xs" onClick={() => void copyCommand()}><Clipboard className="h-3.5 w-3.5" /> Copy</button>}
-            />
-          </div>
-
-          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs leading-relaxed text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200">
-            In Research Assets, users can open imported folders, preview text files, and download previews. Delete only removes the PEARL inventory record; it never deletes NSCC files.
-          </div>
-        </section>
-
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
         <section className="card p-4">
           <div className="mb-3 grid gap-2 md:grid-cols-[1.2fr_0.8fr_0.8fr]">
             <label className="block">
@@ -483,7 +417,7 @@ export default function HpcSyncPage() {
               </p>
             </div>
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid gap-2">
             <Step title="Folder inventory" text="One record per system/run folder, grouped by HPC account." />
             <Step title="Live browser" text="Explore folders, preview text files and copy/download previews." />
             <Step title="Read-only terminal" text="Use safe inspection commands like ls, find, grep, tail, cat, du and qstat." />
@@ -496,7 +430,7 @@ export default function HpcSyncPage() {
           )}
         </section>
 
-        <section className="card p-4">
+        <section className="card p-4 xl:col-span-2">
           <div className="flex items-start gap-3">
             <span className="rounded-lg bg-ink-100 p-2 text-ink-700 dark:bg-ink-800 dark:text-ink-200">
               <Server className="h-4 w-4" />
@@ -506,7 +440,7 @@ export default function HpcSyncPage() {
               <p className="mt-1 text-xs leading-relaxed text-ink-500">High-signal metadata first, raw files stay on HPC.</p>
             </div>
           </div>
-          <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+          <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
             <Meta label="GAMESS / Gaussian" value="Folder summaries, status, method, final energy where detectable, warnings and representative output file." />
             <Meta label="ORCA / VASP" value="Termination status, method, energy, output pointers and run-folder grouping." />
             <Meta label="Next" value="SLURM/PBS completion hook and richer parsers for spectra, geometries and tables." />
@@ -514,36 +448,6 @@ export default function HpcSyncPage() {
         </section>
       </div>
     </>
-  )
-}
-
-function SetupStep({
-  number,
-  title,
-  text,
-  code,
-  action,
-}: {
-  number: string
-  title: string
-  text: string
-  code?: string
-  action?: ReactNode
-}) {
-  return (
-    <div className="rounded-lg border border-ink-200 p-2.5 dark:border-ink-800">
-      <div className="flex items-start gap-2">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-pearl-600 text-[11px] font-bold text-white">{number}</span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-ink-900 dark:text-ink-50">{title}</p>
-            {action}
-          </div>
-          <p className="mt-1 text-xs leading-relaxed text-ink-500">{text}</p>
-          {code && <pre className="mt-2 overflow-x-auto rounded-md bg-ink-950 p-2 font-mono text-[10px] leading-relaxed text-ink-50">{code}</pre>}
-        </div>
-      </div>
-    </div>
   )
 }
 

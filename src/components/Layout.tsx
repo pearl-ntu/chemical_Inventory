@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
   BarChart3,
+  BookOpen,
   ChevronDown,
   ClipboardList,
   Database,
@@ -40,6 +41,7 @@ const COMPUTATIONAL_NAV = [
   { to: '/computational', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/research-assets', label: 'Research Assets', icon: Database, end: false },
   { to: '/computational/hpc-sync', label: 'Linux/HPC Sync', icon: Server, end: false },
+  { to: '/computational/hpc-tutorial', label: 'HPC Tutorial', icon: BookOpen, end: false },
   { to: '/computational/analytics', label: 'Analytics', icon: BarChart3, end: false },
   { to: '/computational/activity', label: 'Activity', icon: Activity, end: false },
 ]
