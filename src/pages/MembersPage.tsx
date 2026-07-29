@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Check, Mail, RotateCw, ShieldCheck, UserPlus, Users, X } from 'lucide-react'
+import { Check, Mail, RotateCw, ShieldCheck, ShieldOff, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
-import { EmptyState, Field, LoadingScreen, Spinner } from '../components/ui'
+import { ConfirmDialog, EmptyState, Field, LoadingScreen, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { api, auth } from '../lib/api'
@@ -24,6 +24,11 @@ export default function MembersPage() {
   const [invites, setInvites] = useState<Invite[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<
+    | { kind: 'revoke'; member: Profile }
+    | { kind: 'remove'; member: Profile }
+    | null
+  >(null)
 
   const [inviteName, setInviteName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -54,6 +59,7 @@ export default function MembersPage() {
     [members],
   )
   const approvedMembers = useMemo(() => members.filter((m) => m.approved), [members])
+  const adminCount = approvedMembers.filter((m) => m.role === 'admin').length
 
   // An invite "resolves" the moment its email shows up as a real account —
   // pending or approved, it doesn't matter, it's no longer just an email
@@ -106,6 +112,19 @@ export default function MembersPage() {
     }
   }
 
+  async function sendMemberLink(target: Profile) {
+    setSaving(target.id)
+    try {
+      await auth.inviteMember(target.email, target.full_name)
+      toast.success(`Sign-in email sent to ${target.email}.`)
+      resendCooldown.start(target.id)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not send that email.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
   async function cancel(inv: Invite) {
     setSaving(inv.id)
     try {
@@ -148,6 +167,38 @@ export default function MembersPage() {
     }
   }
 
+  async function revoke(target: Profile) {
+    if (!profile) return
+    setSaving(target.id)
+    try {
+      await api.revokeAccount(target, profile)
+      setMembers((prev) =>
+        prev.map((m) => (m.id === target.id ? { ...m, approved: false, role: 'viewer' } : m)),
+      )
+      toast.success(`${target.full_name} can no longer see the inventory.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not revoke that account.')
+    } finally {
+      setSaving(null)
+      setConfirm(null)
+    }
+  }
+
+  async function removeAccess(target: Profile) {
+    if (!profile) return
+    setSaving(target.id)
+    try {
+      await api.removeMemberAccess(target, profile)
+      setMembers((prev) => prev.filter((m) => m.id !== target.id))
+      toast.success(`${target.full_name} removed from the member list.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove that member.')
+    } finally {
+      setSaving(null)
+      setConfirm(null)
+    }
+  }
+
   if (!isAdmin) {
     return (
       <EmptyState
@@ -160,14 +211,26 @@ export default function MembersPage() {
 
   if (loading) return <LoadingScreen label="Loading members…" />
 
-  const adminCount = approvedMembers.filter((m) => m.role === 'admin').length
-
   return (
     <>
       <PageHeader
         title="Members"
         description="Everyone with an account, and what they are allowed to do. Sign-up is open to any email — nobody sees the inventory until you approve them here."
       />
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-4">
+        {[
+          ['Approved', approvedMembers.length],
+          ['Waiting', pending.length],
+          ['Invited', outstandingInvites.length],
+          ['Admins', adminCount],
+        ].map(([label, value]) => (
+          <div key={label} className="card px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
+            <p className="mt-1 text-2xl font-bold text-ink-900 dark:text-ink-50">{value}</p>
+          </div>
+        ))}
+      </div>
 
       {/* invite ---------------------------------------------------------------- */}
       <section className="card mb-4 p-4">
@@ -279,13 +342,32 @@ export default function MembersPage() {
                     {m.email} · signed up {formatRelative(m.created_at)}
                   </p>
                 </div>
-                <button
-                  className="btn-primary py-1.5"
-                  disabled={saving === m.id}
-                  onClick={() => void approve(m)}
-                >
-                  {saving === m.id ? <Spinner /> : <Check className="h-4 w-4" />} Approve
-                </button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    className="btn-secondary py-1.5"
+                    disabled={saving === m.id || resendCooldown.secondsLeft(m.id) > 0}
+                    onClick={() => void sendMemberLink(m)}
+                  >
+                    {saving === m.id ? <Spinner /> : <Mail className="h-4 w-4" />}
+                    {resendCooldown.secondsLeft(m.id) > 0
+                      ? `Email in ${resendCooldown.secondsLeft(m.id)}s`
+                      : 'Send email'}
+                  </button>
+                  <button
+                    className="btn-primary py-1.5"
+                    disabled={saving === m.id}
+                    onClick={() => void approve(m)}
+                  >
+                    {saving === m.id ? <Spinner /> : <Check className="h-4 w-4" />} Approve
+                  </button>
+                  <button
+                    className="btn-ghost py-1.5 text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
+                    disabled={saving === m.id}
+                    onClick={() => setConfirm({ kind: 'remove', member: m })}
+                  >
+                    <Trash2 className="h-4 w-4" /> Remove
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -308,6 +390,7 @@ export default function MembersPage() {
                   <th className="th">Position</th>
                   <th className="th">Joined</th>
                   <th className="th">Access</th>
+                  <th className="th">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
@@ -344,6 +427,47 @@ export default function MembersPage() {
                           <option value="viewer">Viewer</option>
                         </select>
                       </td>
+                      <td className="td">
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            className="btn-secondary py-1.5 text-xs"
+                            disabled={saving === m.id || resendCooldown.secondsLeft(m.id) > 0}
+                            onClick={() => void sendMemberLink(m)}
+                            title="Send a fresh magic sign-in email"
+                          >
+                            {saving === m.id ? <Spinner /> : <Mail className="h-3.5 w-3.5" />}
+                            {resendCooldown.secondsLeft(m.id) > 0
+                              ? `${resendCooldown.secondsLeft(m.id)}s`
+                              : 'Email'}
+                          </button>
+                          <button
+                            className="btn-secondary py-1.5 text-xs"
+                            disabled={saving === m.id || isLastAdmin}
+                            onClick={() => setConfirm({ kind: 'revoke', member: m })}
+                            title={
+                              isLastAdmin
+                                ? 'This is the only admin — promote someone else first.'
+                                : 'Move them back to waiting for approval'
+                            }
+                          >
+                            <ShieldOff className="h-3.5 w-3.5" /> Revoke
+                          </button>
+                          <button
+                            className="btn-ghost py-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
+                            disabled={saving === m.id || isLastAdmin || m.id === profile?.id}
+                            onClick={() => setConfirm({ kind: 'remove', member: m })}
+                            title={
+                              m.id === profile?.id
+                                ? 'You cannot remove yourself.'
+                                : isLastAdmin
+                                  ? 'This is the only admin — promote someone else first.'
+                                  : 'Remove this profile from the member list'
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Remove
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   )
                 })}
@@ -375,6 +499,54 @@ export default function MembersPage() {
           above.
         </p>
       </div>
+
+      <ConfirmDialog
+        open={confirm?.kind === 'revoke'}
+        title="Revoke inventory access?"
+        confirmLabel="Revoke access"
+        busy={confirm ? saving === confirm.member.id : false}
+        message={
+          confirm?.kind === 'revoke' ? (
+            <>
+              <p>
+                <strong>{confirm.member.full_name}</strong> will be moved back to waiting for
+                approval and will no longer be able to see the inventory.
+              </p>
+              <p className="mt-2">You can approve them again later.</p>
+            </>
+          ) : null
+        }
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm?.kind === 'revoke') void revoke(confirm.member)
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirm?.kind === 'remove'}
+        title="Remove this member profile?"
+        destructive
+        confirmLabel="Remove access"
+        busy={confirm ? saving === confirm.member.id : false}
+        message={
+          confirm?.kind === 'remove' ? (
+            <>
+              <p>
+                <strong>{confirm.member.full_name}</strong> will be removed from the member list and
+                will lose inventory access.
+              </p>
+              <p className="mt-2">
+                This removes the app profile, not the underlying Supabase Auth user. If they sign in
+                again, they will land outside the inventory until an admin approves them.
+              </p>
+            </>
+          ) : null
+        }
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm?.kind === 'remove') void removeAccess(confirm.member)
+        }}
+      />
     </>
   )
 }

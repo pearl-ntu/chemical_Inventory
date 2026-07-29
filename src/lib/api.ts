@@ -558,6 +558,33 @@ export const api = {
     await api.log(null, 'role_changed', details, actor)
   },
 
+  async revokeAccount(target: Profile, actor: Profile): Promise<void> {
+    const details = `${target.full_name}'s inventory access revoked`
+    if (!IS_CLOUD) {
+      localDb.updateUser(target.id, { approved: false, role: 'viewer' })
+      logLocal(null, 'role_changed', details, actor)
+      return
+    }
+    const { error } = await requireSupabase()
+      .from('profiles')
+      .update({ approved: false, role: 'viewer' })
+      .eq('id', target.id)
+    if (error) fail('Could not revoke that account', error)
+    await api.log(null, 'role_changed', details, actor)
+  },
+
+  async removeMemberAccess(target: Profile, actor: Profile): Promise<void> {
+    const details = `${target.full_name}'s member profile removed`
+    if (!IS_CLOUD) {
+      localDb.saveUsers(localDb.users().filter((u) => u.id !== target.id))
+      logLocal(null, 'role_changed', details, actor)
+      return
+    }
+    const { error } = await requireSupabase().from('profiles').delete().eq('id', target.id)
+    if (error) fail('Could not remove that member profile', error)
+    await api.log(null, 'role_changed', details, actor)
+  },
+
   /** Live updates so two people at two benches see the same shelf. */
   subscribe(onChange: () => void): () => void {
     if (!IS_CLOUD || !supabase) return () => {}
