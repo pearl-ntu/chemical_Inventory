@@ -7,6 +7,7 @@ import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
 import { api } from '../lib/api'
 import { HAZARDS, type Chemical, type ChemicalRequest, type ChemicalRequestInput } from '../lib/types'
+import { useLabLocations } from '../lib/useLabLocations'
 import { download, formatDate, formatSize, todayISO } from '../lib/utils'
 
 const INCOMPATIBLE: Array<[string, string, string]> = [
@@ -35,6 +36,7 @@ function Card({ title, icon, children }: { title: string; icon: React.ReactNode;
 export default function OperationsPage() {
   const { profile, isAdmin, canEdit } = useAuth()
   const { chemicals } = useInventory()
+  const labLocations = useLabLocations(chemicals)
   const toast = useToast()
   const [requests, setRequests] = useState<ChemicalRequest[]>([])
   const [requestForm, setRequestForm] = useState<ChemicalRequestInput>({
@@ -105,8 +107,30 @@ export default function OperationsPage() {
       .filter((group) => group.totalContainers >= 3 && group.locations >= 2 && !group.requestedRecently)
       .slice(0, 12)
 
-    return { stocked, expiring, openedLong, reorder, missingDocs, disposal, conflicts, underuse }
-  }, [chemicals, requests])
+    const activeByLocation = new Map<string, number>()
+    for (const c of stocked) {
+      const key = c.location ?? 'Unassigned'
+      activeByLocation.set(key, (activeByLocation.get(key) ?? 0) + 1)
+    }
+    const capacityAlerts = labLocations.custom
+      .filter((location) => location.kind === 'location' && location.capacity)
+      .map((location) => {
+        const count = activeByLocation.get(location.name) ?? 0
+        const capacity = location.capacity ?? 0
+        return { location, count, capacity, pct: capacity ? Math.round((count / capacity) * 100) : 0 }
+      })
+      .filter((row) => row.pct >= 85)
+      .sort((a, b) => b.pct - a.pct)
+
+    const inspectBefore = new Date()
+    inspectBefore.setMonth(inspectBefore.getMonth() - 3)
+    const inspectionDue = labLocations.custom
+      .filter((location) => location.kind === 'location')
+      .filter((location) => !location.last_inspected_at || new Date(location.last_inspected_at) <= inspectBefore)
+      .sort((a, b) => (a.last_inspected_at ?? '').localeCompare(b.last_inspected_at ?? ''))
+
+    return { stocked, expiring, openedLong, reorder, missingDocs, disposal, conflicts, underuse, capacityAlerts, inspectionDue }
+  }, [chemicals, labLocations.custom, requests])
 
   const pendingRequests = requests.filter((request) => request.status === 'pending')
   const myRequests = profile ? requests.filter((request) => request.requested_by === profile.id) : []
@@ -198,13 +222,14 @@ export default function OperationsPage() {
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-5">
+      <div className="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
           ['Reorder', data.reorder.length],
           ['Expiring', data.expiring.length],
           ['Old opened', data.openedLong.length],
           ['Missing SDS', data.missingDocs.length],
           ['Conflicts', data.conflicts.length],
+          ['Capacity', data.capacityAlerts.length],
         ].map(([label, value]) => (
           <div key={label} className="card px-4 py-3">
             <p className="text-xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
@@ -268,6 +293,35 @@ export default function OperationsPage() {
             </ul>
           ) : (
             <p className="text-sm text-ink-500">No simple segregation conflicts detected from tagged hazards.</p>
+          )}
+        </Card>
+        <Card title="Capacity and overcrowding" icon={<AlertTriangle className="h-4 w-4" />}>
+          {data.capacityAlerts.length ? (
+            <ul className="space-y-2 text-sm">
+              {data.capacityAlerts.map((row) => (
+                <li key={row.location.id} className="rounded border border-amber-200 bg-amber-50 p-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <strong>{row.location.name}</strong>: {row.count}/{row.capacity} containers ({row.pct}% full)
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-ink-500">No managed locations are near capacity.</p>
+          )}
+        </Card>
+        <Card title="Inspection mode" icon={<ClipboardList className="h-4 w-4" />}>
+          {data.inspectionDue.length ? (
+            <ul className="space-y-2 text-sm">
+              {data.inspectionDue.map((location) => (
+                <li key={location.id} className="rounded border border-ink-200 p-2 dark:border-ink-800">
+                  <strong>{location.name}</strong>
+                  <span className="ml-2 text-ink-500">
+                    {location.last_inspected_at ? `last checked ${formatDate(location.last_inspected_at.slice(0, 10))}` : 'never checked'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-ink-500">All managed locations were inspected in the last 3 months.</p>
           )}
         </Card>
         <Card title="Document gaps" icon={<FileWarning className="h-4 w-4" />}>

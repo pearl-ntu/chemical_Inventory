@@ -34,6 +34,10 @@ export default function LocationsPage() {
   // pre-mutation snapshot (e.g. right after "Mark empty").
   const [detailId, setDetailId] = useState<string | null>(null)
   const detail = useMemo(() => chemicals.find((c) => c.id === detailId) ?? null, [chemicals, detailId])
+  const customLocationByName = useMemo(
+    () => new Map(labLocations.custom.filter((row) => row.kind === 'location').map((row) => [row.name, row])),
+    [labLocations.custom],
+  )
 
   const groups = useMemo(() => {
     const rows = chemicals.filter((c) => c.status !== 'empty' && c.status !== 'disposed')
@@ -267,6 +271,9 @@ export default function LocationsPage() {
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {visibleLocations.map(({ location, items }) => {
                     const isOpen = open.has(location)
+                    const managed = customLocationByName.get(location)
+                    const capacity = managed?.capacity ?? null
+                    const capacityPct = capacity ? Math.min(100, Math.round((items.length / capacity) * 100)) : null
                     const matches = q ? items.filter((c) => matchesQuery(c, q)) : items
                     const warnings = segregationWarnings(items)
                     const shown = q ? matches : isOpen ? items : items.slice(0, 4)
@@ -282,13 +289,41 @@ export default function LocationsPage() {
                             </h3>
                             <p className="text-xs text-ink-400">
                               {items.length} container{items.length === 1 ? '' : 's'}
-                              {q && ` · ${matches.length} matching`}
+                              {q && ` - ${matches.length} matching`}
+                              {capacity != null && ` / ${capacity} capacity`}
                             </p>
+                            {managed?.last_inspected_at && (
+                              <p className="mt-0.5 text-[11px] text-ink-400">
+                                inspected {formatDate(managed.last_inspected_at.slice(0, 10))}
+                                {managed.inspected_by ? ` by ${managed.inspected_by}` : ''}
+                              </p>
+                            )}
                           </div>
                           <span className="rounded-lg bg-pearl-50 px-2 py-1 text-sm font-bold text-pearl-700 dark:bg-pearl-500/10 dark:text-pearl-300">
                             {items.length}
                           </span>
                         </div>
+
+                        {capacityPct != null && (
+                          <div className="mt-3">
+                            <div className="h-2 overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800">
+                              <div
+                                className={cx(
+                                  'h-full rounded-full',
+                                  items.length > (capacity ?? 0)
+                                    ? 'bg-rose-500'
+                                    : capacityPct >= 85
+                                      ? 'bg-amber-500'
+                                      : 'bg-emerald-500',
+                                )}
+                                style={{ width: `${capacityPct}%` }}
+                              />
+                            </div>
+                            <p className={cx('mt-1 text-[11px]', items.length > (capacity ?? 0) ? 'text-rose-600 dark:text-rose-300' : 'text-ink-400')}>
+                              {capacityPct}% full{items.length > (capacity ?? 0) ? ' - over capacity' : ''}
+                            </p>
+                          </div>
+                        )}
 
                         {warnings.length > 0 && (
                           <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-500/25 dark:bg-amber-500/10">
@@ -350,6 +385,16 @@ export default function LocationsPage() {
                           >
                             {isOpen ? 'Show less' : `Show all ${items.length}`}
                             <ChevronDown className={cx('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-180')} />
+                          </button>
+                        )}
+                        {managed && isAdmin && (
+                          <button
+                            type="button"
+                            className="mt-2 flex items-center justify-center gap-1 rounded-md py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                            disabled={savingLocation}
+                            onClick={() => void inspectLocation(managed)}
+                          >
+                            <Check className="h-3.5 w-3.5" /> Mark inspected
                           </button>
                         )}
                       </div>
