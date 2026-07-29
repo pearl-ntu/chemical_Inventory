@@ -21,6 +21,7 @@ import {
   Sun,
   Users,
   X,
+  Microscope,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { MODE, LAB_SUBTITLE } from '../lib/config'
@@ -33,6 +34,7 @@ const NAV = [
   { to: '/inventory', label: 'Inventory', icon: FlaskConical, end: false },
   { to: '/locations', label: 'Locations', icon: MapPin, end: false },
   { to: '/operations', label: 'Operations', icon: ClipboardList, end: false },
+  { to: '/equipment', label: 'Equipment', icon: Microscope, end: false },
   { to: '/analytics', label: 'Analytics', icon: BarChart3, end: false },
   { to: '/activity', label: 'Activity', icon: Activity, end: false },
   { to: '/labels', label: 'QR labels', icon: QrCode, end: false },

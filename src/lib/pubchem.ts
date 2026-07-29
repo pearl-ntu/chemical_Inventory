@@ -46,6 +46,19 @@ export function pubchemPageUrl(cid: number): string {
   return `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`
 }
 
+export async function fetch3dSdf(cid: number): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE}/compound/cid/${cid}/record/SDF?record_type=3d`, {
+      headers: { Accept: 'chemical/x-mdl-sdfile,text/plain,*/*' },
+    })
+    if (!res.ok) return null
+    const text = await res.text()
+    return text.includes('$$$$') || text.trim().length > 100 ? text : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Looks a compound up by CAS number first (unambiguous), then by name.
  * Returns null when PubChem has nothing, or when the network is unavailable.

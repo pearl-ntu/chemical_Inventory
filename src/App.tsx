@@ -10,6 +10,7 @@ import ComputationalActivityPage from './pages/ComputationalActivityPage'
 import ComputationalAnalyticsPage from './pages/ComputationalAnalyticsPage'
 import ComputationalDashboardPage from './pages/ComputationalDashboardPage'
 import DashboardPage from './pages/DashboardPage'
+import EquipmentPage from './pages/EquipmentPage'
 import HpcSyncPage from './pages/HpcSyncPage'
 import HpcTutorialPage from './pages/HpcTutorialPage'
 import InventoryPage from './pages/InventoryPage'
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="computational/hpc-tutorial" element={<HpcTutorialPage />} />
           <Route path="computational/storage" element={<Navigate to="/computational/hpc-sync" replace />} />
           <Route path="operations" element={<OperationsPage />} />
+          <Route path="equipment" element={<EquipmentPage />} />
           <Route path="research-assets" element={<ResearchAssetsPage />} />
           <Route path="activity" element={<ActivityPage />} />
           <Route path="labels" element={<LabelsPage />} />

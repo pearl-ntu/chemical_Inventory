@@ -4,6 +4,7 @@ import { CanvasMoleculeEditor, type CanvasEditorOnChangeMolecule } from 'react-o
 import { Molecule } from 'openchemlib'
 import * as pubchem from '../lib/pubchem'
 import { Modal, Spinner } from './ui'
+import { Molecule3DViewer } from './Molecule3DViewer'
 
 export interface DrawnStructure {
   molfile: string
@@ -53,6 +54,7 @@ export function StructureEditorDialog({
   const [hasContent, setHasContent] = useState(Boolean(initialMolfile))
   const [resetKey, setResetKey] = useState(0)
   const [search, setSearch] = useState<PubChemSearchState>({ status: 'idle' })
+  const [sdf3d, setSdf3d] = useState<string | null>(null)
 
   function handleConfirm() {
     const change = latestChange.current
@@ -74,8 +76,10 @@ export function StructureEditorDialog({
     try {
       const info = await pubchem.lookupBySmiles(smiles)
       setSearch(info ? { status: 'found', info } : { status: 'not-found' })
+      setSdf3d(info?.cid ? await pubchem.fetch3dSdf(info.cid) : null)
     } catch {
       setSearch({ status: 'not-found' })
+      setSdf3d(null)
     }
   }
 
@@ -95,6 +99,7 @@ export function StructureEditorDialog({
               latestChange.current = null
               setHasContent(false)
               setSearch({ status: 'idle' })
+              setSdf3d(null)
               setResetKey((k) => k + 1)
             }}
           >
@@ -132,6 +137,7 @@ export function StructureEditorDialog({
               setHasContent(change.getMolfileV3().trim().length > 0)
               // A new edit invalidates whatever the last search found.
               setSearch({ status: 'idle' })
+              setSdf3d(null)
             }}
           />
         </div>
@@ -160,6 +166,21 @@ export function StructureEditorDialog({
             >
               View <ExternalLink className="h-3 w-3" />
             </a>
+          </div>
+        )}
+
+        {search.status === 'found' && (
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="rounded-lg border border-ink-200 bg-white p-3 dark:border-ink-700">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">2D drawing</p>
+              <p className="text-sm text-ink-600 dark:text-ink-300">
+                The drawing above is the structure PEARL will save. The 3D panel is a PubChem preview for the exact match.
+              </p>
+            </div>
+            <div className="rounded-lg border border-ink-200 bg-white p-3 dark:border-ink-700">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">3D PubChem preview</p>
+              <Molecule3DViewer sdf={sdf3d} />
+            </div>
           </div>
         )}
 

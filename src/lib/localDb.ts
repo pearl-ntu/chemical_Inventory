@@ -13,6 +13,12 @@ import type {
   Chemical,
   ChemicalRequest,
   ChemicalRequestInput,
+  Comment,
+  CommentInput,
+  Equipment,
+  EquipmentBooking,
+  EquipmentBookingInput,
+  EquipmentInput,
   Profile,
   ResearchAsset,
   ResearchAssetChemicalLink,
@@ -36,6 +42,9 @@ const K = {
   researchAssetVersions: 'pearl.demo.research_asset_versions',
   researchAssetLinks: 'pearl.demo.research_asset_links',
   chemicalRequests: 'pearl.demo.chemical_requests',
+  comments: 'pearl.demo.comments',
+  equipment: 'pearl.demo.equipment',
+  equipmentBookings: 'pearl.demo.equipment_bookings',
 } as const
 
 interface DemoUser extends Profile {
@@ -410,6 +419,66 @@ export const localDb = {
     rows[idx] = updated
     localDb.saveChemicalRequests(rows)
     return updated
+  },
+
+  comments(resourceType?: string, resourceId?: string): Comment[] {
+    const rows = read<Comment[]>(K.comments, [])
+    return resourceType && resourceId
+      ? rows.filter((row) => row.resource_type === resourceType && row.resource_id === resourceId)
+      : rows
+  },
+
+  insertComment(input: CommentInput, actor: Profile): Comment {
+    const row: Comment = {
+      ...input,
+      id: uid(),
+      author_id: actor.id,
+      author_name: actor.full_name,
+      created_at: new Date().toISOString(),
+      edited_at: null,
+    }
+    write(K.comments, [row, ...read<Comment[]>(K.comments, [])])
+    return row
+  },
+
+  deleteComment(id: string) {
+    write(K.comments, read<Comment[]>(K.comments, []).filter((row) => row.id !== id))
+  },
+
+  equipment(): Equipment[] {
+    return read<Equipment[]>(K.equipment, [])
+  },
+
+  insertEquipment(input: EquipmentInput): Equipment {
+    const row: Equipment = { ...input, id: uid(), created_at: new Date().toISOString() }
+    write(K.equipment, [row, ...localDb.equipment()])
+    return row
+  },
+
+  equipmentBookings(): EquipmentBooking[] {
+    return read<EquipmentBooking[]>(K.equipmentBookings, [])
+  },
+
+  insertEquipmentBooking(input: EquipmentBookingInput, actor: Profile): EquipmentBooking {
+    const equipment = localDb.equipment().find((row) => row.id === input.equipment_id)
+    const overlaps = localDb.equipmentBookings().some(
+      (row) =>
+        row.equipment_id === input.equipment_id &&
+        new Date(input.start_time) < new Date(row.end_time) &&
+        new Date(input.end_time) > new Date(row.start_time),
+    )
+    if (overlaps) throw new Error('This equipment is already booked for that time.')
+    const row: EquipmentBooking = {
+      ...input,
+      id: uid(),
+      equipment_name: equipment?.name ?? null,
+      booked_by: actor.id,
+      booked_by_name: actor.full_name,
+      related_research_asset_title: null,
+      created_at: new Date().toISOString(),
+    }
+    write(K.equipmentBookings, [row, ...localDb.equipmentBookings()])
+    return row
   },
 
   session(): Profile | null {

@@ -16,7 +16,16 @@ import type {
   ChemicalInput,
   ChemicalRequest,
   ChemicalRequestInput,
+  Comment,
+  CommentInput,
+  Equipment,
+  EquipmentBooking,
+  EquipmentBookingInput,
+  EquipmentInput,
   Invite,
+  MemberOffboardingSummary,
+  OffboardingItem,
+  OwnershipTransferInput,
   Profile,
   ResearchAsset,
   ResearchAssetChemicalLink,
@@ -54,6 +63,81 @@ function nextStableId(rows: Array<{ stable_id: string | null }>): string {
     return Number.isFinite(n) ? Math.max(highest, n) : highest
   }, 0)
   return `PEARL-RA-${String(max + 1).padStart(6, '0')}`
+}
+
+function memberAliases(member: Profile): string[] {
+  return [member.id, member.full_name, member.email]
+    .map((value) => value?.trim().toLowerCase())
+    .filter((value): value is string => Boolean(value))
+}
+
+function itemForChemical(row: Chemical): OffboardingItem {
+  return {
+    resource_type: 'chemical',
+    resource_id: row.id,
+    title: row.name,
+    subtitle: row.code,
+    project: row.project,
+    location: [row.location, row.sub_location].filter(Boolean).join(' / ') || null,
+    status: row.status,
+    stable_id: null,
+    owner: row.owner,
+    created_by: row.created_by,
+    size_label: [row.quantity ? `${row.quantity}x` : null, row.size_value ? `${row.size_value} ${row.size_unit}` : null]
+      .filter(Boolean)
+      .join(' ') || null,
+    storage_link: null,
+  }
+}
+
+function itemForResearchAsset(row: ResearchAsset): OffboardingItem {
+  return {
+    resource_type: 'research_asset',
+    resource_id: row.id,
+    title: row.title,
+    subtitle: [row.stable_id, row.type, row.software].filter(Boolean).join(' - ') || null,
+    project: row.project,
+    location: row.external_path,
+    status: row.status,
+    stable_id: row.stable_id,
+    owner: row.owner,
+    created_by: row.created_by,
+    size_label: row.size_label,
+    storage_link: row.storage_link ?? row.output_link ?? row.repo_link,
+  }
+}
+
+function projectRollup(items: OffboardingItem[]): MemberOffboardingSummary['projects'] {
+  const map = new Map<string, { name: string; count: number; size_bytes: number | null }>()
+  for (const item of items) {
+    const name = item.project?.trim() || 'Unassigned project'
+    const current = map.get(name) ?? { name, count: 0, size_bytes: null }
+    current.count += 1
+    map.set(name, current)
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+}
+
+async function invokeAskPearl(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const sb = requireSupabase()
+  await sb.auth.refreshSession().catch(() => null)
+  const { data: userData, error: userError } = await sb.auth.getUser()
+  if (userError || !userData.user) throw new ApiError('This AI action needs a fresh sign-in session.')
+  const { data: sessionData } = await sb.auth.getSession()
+  const token = sessionData.session?.access_token
+  if (!token) throw new ApiError('This AI action needs a signed-in session.')
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/ask-pearl`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      apikey: SUPABASE_ANON_KEY,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok) throw new ApiError(data?.error ?? data?.message ?? `AI action failed with HTTP ${res.status}.`)
+  return data as Record<string, unknown>
 }
 
 /**
@@ -325,27 +409,17 @@ export const api = {
         sources: [],
       }
     }
-    const sb = requireSupabase()
-    await sb.auth.refreshSession().catch(() => null)
-    const { data: userData, error: userError } = await sb.auth.getUser()
-    if (userError || !userData.user) throw new ApiError('Ask PEARL needs a fresh sign-in session.')
-    const { data: sessionData } = await sb.auth.getSession()
-    const token = sessionData.session?.access_token
-    if (!token) throw new ApiError('Ask PEARL needs a signed-in session.')
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/ask-pearl`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        apikey: SUPABASE_ANON_KEY,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ question, workspace }),
-    })
-    const data = await res.json().catch(() => null)
-    if (!res.ok) {
-      throw new ApiError(data?.error ?? data?.message ?? `Ask PEARL failed with HTTP ${res.status}.`)
+    return (await invokeAskPearl({ question, workspace })) as unknown as AskPearlReply
+  },
+
+  async draftMethods(project: string): Promise<string> {
+    if (!IS_CLOUD) {
+      const chemicals = localDb.chemicals().filter((row) => row.project === project)
+      const assets = localDb.researchAssets().filter((row) => row.project === project)
+      return `Materials and methods draft for ${project}: ${chemicals.length} chemicals and ${assets.length} research assets are linked in PEARL. Review supplier, grade, instrument, and computational parameters before use in a manuscript.`
     }
-    return data as AskPearlReply
+    const res = await invokeAskPearl({ action: 'draft_methods', project })
+    return String(res?.draft ?? '')
   },
 
   async listChemicals(): Promise<Chemical[]> {
@@ -654,6 +728,93 @@ export const api = {
     const { error } = await requireSupabase().from('profiles').delete().eq('id', target.id)
     if (error) fail('Could not remove that member profile', error)
     await api.log(null, 'role_changed', details, actor)
+  },
+
+  async getMemberOffboardingSummary(target: Profile): Promise<MemberOffboardingSummary> {
+    if (!IS_CLOUD) {
+      const aliases = memberAliases(target)
+      const chemicals = localDb
+        .chemicals()
+        .filter((row) => aliases.includes((row.owner ?? '').trim().toLowerCase()))
+        .map(itemForChemical)
+      const research_assets = localDb
+        .researchAssets()
+        .filter((row) => row.created_by === target.id || aliases.includes((row.owner ?? '').trim().toLowerCase()))
+        .map(itemForResearchAsset)
+      return {
+        member: { id: target.id, full_name: target.full_name, email: target.email },
+        chemicals,
+        research_assets,
+        projects: projectRollup([...chemicals, ...research_assets]),
+      }
+    }
+
+    const sb = requireSupabase()
+    await sb.auth.refreshSession().catch(() => null)
+    const { data: sessionData } = await sb.auth.getSession()
+    const token = sessionData.session?.access_token
+    if (!token) throw new ApiError('Member handover needs a signed-in admin session.')
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/member-offboarding`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'summary', target_member_id: target.id }),
+    })
+    const data = await res.json().catch(() => null)
+    if (!res.ok) throw new ApiError(data?.error ?? `Could not load handover summary (${res.status}).`)
+    return data as MemberOffboardingSummary
+  },
+
+  async transferMemberOwnership(
+    target: Profile,
+    transfers: OwnershipTransferInput[],
+    actor: Profile,
+  ): Promise<MemberOffboardingSummary> {
+    if (transfers.length === 0) return api.getMemberOffboardingSummary(target)
+    if (!IS_CLOUD) {
+      const users = localDb.users()
+      for (const transfer of transfers) {
+        const to = users.find((user) => user.id === transfer.to_member_id)
+        if (!to) throw new ApiError('Transfer destination not found.')
+        if (transfer.resource_type === 'chemical') {
+          localDb.updateChemical(transfer.resource_id, { owner: to.full_name })
+        } else {
+          localDb.updateResearchAsset(transfer.resource_id, {
+            owner: to.full_name,
+            created_by: to.id,
+            created_by_name: to.full_name,
+          })
+        }
+        logLocal(null, 'handover', `Transferred ${transfer.resource_type} to ${to.full_name}`, actor)
+      }
+      return api.getMemberOffboardingSummary(target)
+    }
+
+    const sb = requireSupabase()
+    await sb.auth.refreshSession().catch(() => null)
+    const { data: sessionData } = await sb.auth.getSession()
+    const token = sessionData.session?.access_token
+    if (!token) throw new ApiError('Member handover needs a signed-in admin session.')
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/member-offboarding`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'transfer',
+        target_member_id: target.id,
+        transfers,
+      }),
+    })
+    const data = await res.json().catch(() => null)
+    if (!res.ok) throw new ApiError(data?.error ?? `Could not transfer ownership (${res.status}).`)
+    await api.log(null, 'handover', `Transferred ${transfers.length} item${transfers.length === 1 ? '' : 's'} from ${target.full_name}`, actor)
+    return data as MemberOffboardingSummary
   },
 
   async listResearchAssets(): Promise<ResearchAsset[]> {
@@ -1000,6 +1161,88 @@ export const api = {
     if (error) fail('Could not update chemical request', error)
     await api.log(null, 'updated', `Updated chemical request ${(data as ChemicalRequest).chemical_name_or_cas}`, actor)
     return data as ChemicalRequest
+  },
+
+  async listComments(resourceType: Comment['resource_type'], resourceId: string): Promise<Comment[]> {
+    if (!IS_CLOUD) return localDb.comments(resourceType, resourceId)
+    const { data, error } = await requireSupabase()
+      .from('comments')
+      .select('*')
+      .eq('resource_type', resourceType)
+      .eq('resource_id', resourceId)
+      .order('created_at', { ascending: true })
+    if (missingTable(error)) return []
+    if (error) fail('Could not load comments', error)
+    return (data ?? []) as Comment[]
+  },
+
+  async createComment(input: CommentInput, actor: Profile): Promise<Comment> {
+    if (!IS_CLOUD) return localDb.insertComment(input, actor)
+    const { data, error } = await requireSupabase()
+      .from('comments')
+      .insert({ ...input, author_id: actor.id, author_name: actor.full_name })
+      .select()
+      .single()
+    if (missingTable(error)) return localDb.insertComment(input, actor)
+    if (error) fail('Could not add comment', error)
+    return data as Comment
+  },
+
+  async deleteComment(row: Comment, actor: Profile): Promise<void> {
+    if (!IS_CLOUD) {
+      localDb.deleteComment(row.id)
+      return
+    }
+    const { error } = await requireSupabase().from('comments').delete().eq('id', row.id)
+    if (missingTable(error)) {
+      localDb.deleteComment(row.id)
+      return
+    }
+    if (error) fail('Could not delete comment', error)
+    await api.log(null, 'updated', `Deleted comment on ${row.resource_type}`, actor)
+  },
+
+  async listEquipment(): Promise<Equipment[]> {
+    if (!IS_CLOUD) return localDb.equipment()
+    const { data, error } = await requireSupabase().from('equipment').select('*').order('name')
+    if (missingTable(error)) return localDb.equipment()
+    if (error) fail('Could not load equipment', error)
+    return (data ?? []) as Equipment[]
+  },
+
+  async createEquipment(input: EquipmentInput): Promise<Equipment> {
+    if (!IS_CLOUD) return localDb.insertEquipment(input)
+    const { data, error } = await requireSupabase().from('equipment').insert(input).select().single()
+    if (missingTable(error)) return localDb.insertEquipment(input)
+    if (error) fail('Could not add equipment', error)
+    return data as Equipment
+  },
+
+  async listEquipmentBookings(): Promise<EquipmentBooking[]> {
+    if (!IS_CLOUD) return localDb.equipmentBookings()
+    const { data, error } = await requireSupabase()
+      .from('equipment_bookings')
+      .select('*, equipment(name), research_assets(title)')
+      .order('start_time', { ascending: true })
+    if (missingTable(error)) return localDb.equipmentBookings()
+    if (error) fail('Could not load equipment bookings', error)
+    return ((data ?? []) as Array<EquipmentBooking & { equipment?: { name?: string }, research_assets?: { title?: string } }>).map((row) => ({
+      ...row,
+      equipment_name: row.equipment?.name ?? null,
+      related_research_asset_title: row.research_assets?.title ?? null,
+    }))
+  },
+
+  async createEquipmentBooking(input: EquipmentBookingInput, actor: Profile): Promise<EquipmentBooking> {
+    if (!IS_CLOUD) return localDb.insertEquipmentBooking(input, actor)
+    const { data, error } = await requireSupabase()
+      .from('equipment_bookings')
+      .insert({ ...input, booked_by: actor.id, booked_by_name: actor.full_name })
+      .select()
+      .single()
+    if (missingTable(error)) return localDb.insertEquipmentBooking(input, actor)
+    if (error) fail('Could not book equipment', error)
+    return data as EquipmentBooking
   },
 
   /** Live updates so two people at two benches see the same shelf. */

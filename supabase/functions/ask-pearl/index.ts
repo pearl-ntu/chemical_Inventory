@@ -57,6 +57,15 @@ function userIdFromJwt(jwt: string): string | null {
   }
 }
 
+function methodsContext(project: string, chemicals: Record<string, unknown>[], assets: Record<string, unknown>[]) {
+  const needle = project.toLowerCase()
+  return {
+    project,
+    chemicals: chemicals.filter((row) => String(row.project ?? '').toLowerCase().includes(needle)).slice(0, 80),
+    research_assets: assets.filter((row) => String(row.project ?? '').toLowerCase().includes(needle) || String(row.title ?? '').toLowerCase().includes(needle)).slice(0, 80),
+  }
+}
+
 async function callModel(prompt: string): Promise<string> {
   const provider = (Deno.env.get('ASK_PEARL_PROVIDER') ?? '').toLowerCase()
   const geminiKey = Deno.env.get('GEMINI_API_KEY')
@@ -210,18 +219,21 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json().catch(() => ({}))
+  const action = String(body.action ?? 'ask').trim()
   const question = String(body.question ?? '').trim().slice(0, 1200)
+  const project = String(body.project ?? '').trim().slice(0, 200)
   const workspace = body.workspace === 'computational' ? 'computational' : 'experimental'
-  if (!question) return json({ error: 'Question is required' }, 400)
+  if (action === 'ask' && !question) return json({ error: 'Question is required' }, 400)
+  if (action === 'draft_methods' && !project) return json({ error: 'Project is required' }, 400)
 
   const [chemicals, assets, requests] = await Promise.all([
     supabase
       .from('chemicals')
-      .select('code,name,cas,location,sub_location,supplier,quantity,size_value,size_unit,status,hazards,expiry_date,opened_date,reorder_priority,owner,project,remarks')
+      .select('id,code,name,cas,location,sub_location,supplier,quantity,size_value,size_unit,status,hazards,expiry_date,opened_date,reorder_priority,owner,project,remarks')
       .limit(300),
     supabase
       .from('research_assets')
-      .select('stable_id,type,title,project,owner,software,method,status,visibility,last_verified_at,tags,notes')
+      .select('id,stable_id,type,title,project,owner,software,method,status,visibility,last_verified_at,tags,notes,storage_link,input_link,output_link')
       .limit(220),
     supabase
       .from('chemical_requests')
@@ -236,6 +248,16 @@ Deno.serve(async (req) => {
     chemicals: chemicals.data ?? [],
     research_assets: assets.data ?? [],
     chemical_requests: requests.data ?? [],
+  }
+
+  if (action === 'draft_methods') {
+    const scoped = methodsContext(project, (chemicals.data ?? []) as Record<string, unknown>[], (assets.data ?? []) as Record<string, unknown>[])
+    const prompt = `Draft a concise first-pass methods section for the project below. Use only the supplied PEARL JSON. Keep it manuscript-ready but mark missing details as TODO. Include experimental materials and computational methods when present.\n\nScoped JSON context:\n${JSON.stringify(scoped)}`
+    try {
+      return json({ draft: await callModel(prompt) })
+    } catch (err) {
+      return json({ error: err instanceof Error ? err.message : 'Assistant provider error' }, 502)
+    }
   }
 
   const prompt = `The user is currently in the ${workspace} workspace.\n\nQuestion: ${question}\n\nScoped JSON context:\n${JSON.stringify(context)}`

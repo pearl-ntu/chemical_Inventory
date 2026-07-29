@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Check, Mail, RotateCw, ShieldCheck, ShieldOff, Trash2, UserPlus, Users, X } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { ArrowRight, Check, Database, FlaskConical, Mail, RotateCw, ShieldCheck, ShieldOff, Trash2, UserCheck, UserPlus, Users, X } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
-import { ConfirmDialog, EmptyState, Field, LoadingScreen, Spinner } from '../components/ui'
+import { ConfirmDialog, EmptyState, Field, LoadingScreen, Modal, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { api, auth } from '../lib/api'
 import { MODE } from '../lib/config'
-import type { Invite, Profile, Role } from '../lib/types'
+import type { Invite, MemberOffboardingSummary, OffboardingItem, OwnershipTransferInput, Profile, Role } from '../lib/types'
 import { useCooldown } from '../lib/useCooldown'
 import { formatDate, formatRelative } from '../lib/utils'
 
@@ -29,6 +29,12 @@ export default function MembersPage() {
     | { kind: 'remove'; member: Profile }
     | null
   >(null)
+  const [offboarding, setOffboarding] = useState<{
+    member: Profile
+    summary: MemberOffboardingSummary | null
+    destinations: Record<string, string>
+  } | null>(null)
+  const [offboardingBusy, setOffboardingBusy] = useState(false)
 
   const [inviteName, setInviteName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -199,6 +205,74 @@ export default function MembersPage() {
     }
   }
 
+  async function openOffboarding(target: Profile) {
+    setOffboarding({ member: target, summary: null, destinations: {} })
+    setOffboardingBusy(true)
+    try {
+      const summary = await api.getMemberOffboardingSummary(target)
+      setOffboarding({ member: target, summary, destinations: {} })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not load handover details.')
+      setOffboarding(null)
+    } finally {
+      setOffboardingBusy(false)
+    }
+  }
+
+  function handoverItems(summary: MemberOffboardingSummary | null): OffboardingItem[] {
+    return summary ? [...summary.chemicals, ...summary.research_assets] : []
+  }
+
+  function setDestination(resourceId: string, memberId: string) {
+    setOffboarding((current) =>
+      current
+        ? { ...current, destinations: { ...current.destinations, [resourceId]: memberId } }
+        : current,
+    )
+  }
+
+  function applyBulkDestination(memberId: string) {
+    setOffboarding((current) => {
+      if (!current?.summary) return current
+      return {
+        ...current,
+        destinations: Object.fromEntries(
+          handoverItems(current.summary).map((item) => [item.resource_id, memberId]),
+        ),
+      }
+    })
+  }
+
+  async function transferOffboardingItems(revokeAfter = false) {
+    if (!profile || !offboarding?.summary) return
+    const transfers: OwnershipTransferInput[] = handoverItems(offboarding.summary)
+      .map((item) => ({
+        resource_type: item.resource_type,
+        resource_id: item.resource_id,
+        to_member_id: offboarding.destinations[item.resource_id],
+      }))
+      .filter((transfer) => transfer.to_member_id)
+    if (transfers.length !== handoverItems(offboarding.summary).length) {
+      toast.error('Choose a new owner for every chemical and computational asset first.')
+      return
+    }
+
+    setOffboardingBusy(true)
+    try {
+      const summary = await api.transferMemberOwnership(offboarding.member, transfers, profile)
+      setOffboarding((current) => current && { ...current, summary, destinations: {} })
+      toast.success(`Transferred ${transfers.length} item${transfers.length === 1 ? '' : 's'}.`)
+      if (revokeAfter) {
+        await revoke(offboarding.member)
+        setOffboarding(null)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not complete handover.')
+    } finally {
+      setOffboardingBusy(false)
+    }
+  }
+
   if (!isAdmin) {
     return (
       <EmptyState
@@ -210,6 +284,10 @@ export default function MembersPage() {
   }
 
   if (loading) return <LoadingScreen label="Loading members…" />
+
+  const offboardingItems = handoverItems(offboarding?.summary ?? null)
+  const handoverDestinations = approvedMembers.filter((m) => m.id !== offboarding?.member.id)
+  const assignedCount = offboardingItems.filter((item) => offboarding?.destinations[item.resource_id]).length
 
   return (
     <>
@@ -453,6 +531,14 @@ export default function MembersPage() {
                             <ShieldOff className="h-3.5 w-3.5" /> Revoke
                           </button>
                           <button
+                            className="btn-secondary py-1.5 text-xs"
+                            disabled={saving === m.id || isLastAdmin || m.id === profile?.id}
+                            onClick={() => void openOffboarding(m)}
+                            title="Review and transfer their chemicals, projects, and computational assets before revoking access"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" /> Offboard
+                          </button>
+                          <button
                             className="btn-ghost py-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
                             disabled={saving === m.id || isLastAdmin || m.id === profile?.id}
                             onClick={() => setConfirm({ kind: 'remove', member: m })}
@@ -547,6 +633,182 @@ export default function MembersPage() {
           if (confirm?.kind === 'remove') void removeAccess(confirm.member)
         }}
       />
+
+      <Modal
+        open={Boolean(offboarding)}
+        onClose={() => {
+          if (!offboardingBusy) setOffboarding(null)
+        }}
+        title="Member sign-off and handover"
+        description={
+          offboarding
+            ? `Review ${offboarding.member.full_name}'s chemicals, computational projects, and data pointers before access is revoked.`
+            : undefined
+        }
+        size="xl"
+        footer={
+          <>
+            <button type="button" className="btn-secondary" disabled={offboardingBusy} onClick={() => setOffboarding(null)}>
+              Close
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={offboardingBusy || offboardingItems.length === 0 || assignedCount !== offboardingItems.length}
+              onClick={() => void transferOffboardingItems(false)}
+            >
+              {offboardingBusy ? <Spinner /> : <ArrowRight className="h-4 w-4" />} Transfer only
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={offboardingBusy || offboardingItems.length === 0 || assignedCount !== offboardingItems.length}
+              onClick={() => void transferOffboardingItems(true)}
+            >
+              {offboardingBusy ? <Spinner /> : <ShieldOff className="h-4 w-4" />} Transfer and revoke
+            </button>
+          </>
+        }
+      >
+        {offboardingBusy && !offboarding?.summary ? (
+          <LoadingScreen label="Loading handover inventory..." />
+        ) : offboarding?.summary ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-4">
+              {[
+                ['Chemicals', offboarding.summary.chemicals.length],
+                ['Computational assets', offboarding.summary.research_assets.length],
+                ['Projects', offboarding.summary.projects.length],
+                ['Assigned', `${assignedCount}/${offboardingItems.length}`],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+                  <p className="text-xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
+                  <p className="mt-1 text-2xl font-bold text-ink-900 dark:text-ink-50">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            <section className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">Bulk reassign</h3>
+                  <p className="text-xs text-ink-500 dark:text-ink-400">
+                    Choose one new owner for everything, then adjust individual rows if needed.
+                  </p>
+                </div>
+                <select
+                  className="input w-full sm:w-64"
+                  value=""
+                  onChange={(e) => applyBulkDestination(e.target.value)}
+                  disabled={offboardingBusy || handoverDestinations.length === 0}
+                >
+                  <option value="">Reassign everything to...</option>
+                  {handoverDestinations.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </section>
+
+            {offboarding.summary.projects.length > 0 && (
+              <section className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+                <h3 className="mb-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
+                  Projects and data map
+                </h3>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {offboarding.summary.projects.map((project) => (
+                    <div key={project.name} className="rounded-lg bg-ink-50 px-3 py-2 dark:bg-ink-950">
+                      <p className="truncate text-sm font-semibold text-ink-800 dark:text-ink-100">{project.name}</p>
+                      <p className="text-xs text-ink-500">{project.count} linked item{project.count === 1 ? '' : 's'}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            <HandoverSection
+              title="Experimental chemicals"
+              icon={<FlaskConical className="h-4 w-4" />}
+              items={offboarding.summary.chemicals}
+              destinations={handoverDestinations}
+              selected={offboarding.destinations}
+              onSelect={setDestination}
+            />
+            <HandoverSection
+              title="Computational assets and datasets"
+              icon={<Database className="h-4 w-4" />}
+              items={offboarding.summary.research_assets}
+              destinations={handoverDestinations}
+              selected={offboarding.destinations}
+              onSelect={setDestination}
+            />
+          </div>
+        ) : null}
+      </Modal>
     </>
+  )
+}
+
+function HandoverSection({
+  title,
+  icon,
+  items,
+  destinations,
+  selected,
+  onSelect,
+}: {
+  title: string
+  icon: ReactNode
+  items: OffboardingItem[]
+  destinations: Profile[]
+  selected: Record<string, string>
+  onSelect: (resourceId: string, memberId: string) => void
+}) {
+  return (
+    <section className="rounded-lg border border-ink-200 dark:border-ink-800">
+      <div className="flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-3 py-2 dark:border-ink-800 dark:bg-ink-950">
+        {icon}
+        <h3 className="text-sm font-semibold text-ink-800 dark:text-ink-100">{title}</h3>
+        <span className="ml-auto text-xs text-ink-400">{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="px-3 py-4 text-sm text-ink-500">No items found for this member.</p>
+      ) : (
+        <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+          {items.map((item) => (
+            <li key={`${item.resource_type}:${item.resource_id}`} className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-center">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate font-medium text-ink-900 dark:text-ink-50">{item.title}</p>
+                  {item.stable_id && (
+                    <span className="rounded-full bg-ink-100 px-2 py-0.5 font-mono text-[10px] text-ink-500 dark:bg-ink-800">
+                      {item.stable_id}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-xs text-ink-500">
+                  {[item.subtitle, item.project, item.location, item.status, item.size_label].filter(Boolean).join(' - ') || 'No extra metadata'}
+                </p>
+                {item.storage_link && <p className="mt-0.5 truncate text-xs text-ink-400">{item.storage_link}</p>}
+              </div>
+              <select
+                className="input"
+                value={selected[item.resource_id] ?? ''}
+                onChange={(e) => onSelect(item.resource_id, e.target.value)}
+              >
+                <option value="">New owner...</option>
+                {destinations.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.full_name}
+                  </option>
+                ))}
+              </select>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

@@ -259,6 +259,93 @@ export type ChemicalRequestInput = Pick<
   'chemical_name_or_cas' | 'quantity' | 'supplier' | 'justification_project' | 'notes'
 >
 
+export type OwnershipResourceType = 'chemical' | 'research_asset'
+
+export interface OwnershipTransfer {
+  id: string
+  resource_type: OwnershipResourceType
+  resource_id: string
+  from_member: string | null
+  from_member_name: string | null
+  to_member: string | null
+  to_member_name: string | null
+  transferred_by: string | null
+  transferred_by_name: string | null
+  transferred_at: string
+}
+
+export interface OffboardingItem {
+  resource_type: OwnershipResourceType
+  resource_id: string
+  title: string
+  subtitle: string | null
+  project: string | null
+  location: string | null
+  status: string | null
+  stable_id: string | null
+  owner: string | null
+  created_by: string | null
+  size_label: string | null
+  storage_link: string | null
+}
+
+export interface MemberOffboardingSummary {
+  member: Pick<Profile, 'id' | 'full_name' | 'email'>
+  chemicals: OffboardingItem[]
+  research_assets: OffboardingItem[]
+  projects: Array<{ name: string; count: number; size_bytes: number | null }>
+}
+
+export interface OwnershipTransferInput {
+  resource_type: OwnershipResourceType
+  resource_id: string
+  to_member_id: string
+}
+
+export type CommentResourceType = 'chemical' | 'research_asset' | 'equipment_booking'
+
+export interface Comment {
+  id: string
+  resource_type: CommentResourceType
+  resource_id: string
+  author_id: string | null
+  author_name: string | null
+  body: string
+  created_at: string
+  edited_at: string | null
+}
+
+export type CommentInput = Pick<Comment, 'resource_type' | 'resource_id' | 'body'>
+
+export interface Equipment {
+  id: string
+  name: string
+  location: string | null
+  notes: string | null
+  created_at: string
+}
+
+export type EquipmentInput = Pick<Equipment, 'name' | 'location' | 'notes'>
+
+export interface EquipmentBooking {
+  id: string
+  equipment_id: string
+  equipment_name?: string | null
+  booked_by: string | null
+  booked_by_name: string | null
+  start_time: string
+  end_time: string
+  purpose: string
+  related_research_asset_id: string | null
+  related_research_asset_title?: string | null
+  created_at: string
+}
+
+export type EquipmentBookingInput = Pick<
+  EquipmentBooking,
+  'equipment_id' | 'start_time' | 'end_time' | 'purpose' | 'related_research_asset_id'
+>
+
 export interface ActivityEntry {
   id: string
   chemical_id: string | null

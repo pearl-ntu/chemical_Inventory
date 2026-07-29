@@ -21,12 +21,14 @@ import { useToast } from '../context/ToastContext'
 import { api } from '../lib/api'
 import { resolveDeliveryPhotoUrl } from '../lib/deliveryPhoto'
 import * as pubchem from '../lib/pubchem'
-import { qrDataUrl } from '../lib/qr'
+import { containerDeepLink, qrDataUrl } from '../lib/qr'
 import { STATUS_LABEL, type Chemical, type ResearchAsset } from '../lib/types'
 import { cx, formatDate, formatSize, statusTone } from '../lib/utils'
 import { HazardBadges } from './HazardBadges'
 import { LazyMolfileSvgRenderer, LazyReactionViewer } from './LazyStructure'
 import { ConfirmDialog, Drawer, Spinner } from './ui'
+import { CommentThread } from './CommentThread'
+import { Molecule3DViewer } from './Molecule3DViewer'
 
 function Row({
   icon,
@@ -63,6 +65,8 @@ export function ChemicalDrawer({
 
   const [qr, setQr] = useState<string | null>(null)
   const [info, setInfo] = useState<pubchem.PubChemInfo | null>(null)
+  const [sdf3d, setSdf3d] = useState<string | null>(null)
+  const [structureView, setStructureView] = useState<'2d' | '3d'>('2d')
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [relatedAssets, setRelatedAssets] = useState<ResearchAsset[]>([])
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -71,13 +75,19 @@ export function ChemicalDrawer({
   useEffect(() => {
     setQr(null)
     setInfo(null)
+    setSdf3d(null)
+    setStructureView('2d')
     setPhotoUrl(null)
     setRelatedAssets([])
     if (!chemical) return
 
     let live = true
-    void qrDataUrl(chemical.code, 220).then((url) => live && setQr(url))
-    void pubchem.lookup(chemical.cas, chemical.name).then((res) => live && setInfo(res))
+    void qrDataUrl(containerDeepLink(chemical.code), 220).then((url) => live && setQr(url))
+    void pubchem.lookup(chemical.cas, chemical.name).then((res) => {
+      if (!live) return
+      setInfo(res)
+      if (res?.cid) void pubchem.fetch3dSdf(res.cid).then((sdf) => live && setSdf3d(sdf))
+    })
     void api
       .listResearchAssetsForChemical(chemical.id)
       .then((rows) => live && setRelatedAssets(rows))
@@ -179,24 +189,32 @@ export function ChemicalDrawer({
 
           {/* structure + qr ---------------------------------------------- */}
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="viz-root card flex min-h-[160px] items-center justify-center overflow-hidden bg-white p-3">
-              {c.structure_molfile ? (
-                <Suspense fallback={<Spinner className="h-5 w-5 text-ink-300" />}>
-                  <LazyMolfileSvgRenderer molfile={c.structure_molfile} width={220} height={150} />
-                </Suspense>
-              ) : info ? (
-                <img
-                  src={info.imageUrl}
-                  alt={`Structure of ${c.name}`}
-                  className="max-h-36 w-auto object-contain dark:brightness-95 dark:invert-[.92] dark:hue-rotate-180"
-                  loading="lazy"
-                />
-              ) : (
-                <p className="px-3 text-center text-xs text-ink-400">
-                  No structure available offline. Draw one from the edit form, or it's looked up
-                  from PubChem when the network allows.
-                </p>
-              )}
+            <div className="viz-root card flex min-h-[220px] flex-col justify-center overflow-hidden bg-white p-3">
+              <div className="mb-2 flex justify-end gap-1">
+                <button type="button" className={structureView === '2d' ? 'btn-primary py-1 text-xs' : 'btn-secondary py-1 text-xs'} onClick={() => setStructureView('2d')}>2D</button>
+                <button type="button" className={structureView === '3d' ? 'btn-primary py-1 text-xs' : 'btn-secondary py-1 text-xs'} onClick={() => setStructureView('3d')}>3D</button>
+              </div>
+              <div className="flex flex-1 items-center justify-center">
+                {structureView === '3d' ? (
+                  <Molecule3DViewer sdf={sdf3d} />
+                ) : c.structure_molfile ? (
+                  <Suspense fallback={<Spinner className="h-5 w-5 text-ink-300" />}>
+                    <LazyMolfileSvgRenderer molfile={c.structure_molfile} width={220} height={150} />
+                  </Suspense>
+                ) : info ? (
+                  <img
+                    src={info.imageUrl}
+                    alt={`Structure of ${c.name}`}
+                    className="max-h-36 w-auto object-contain dark:brightness-95 dark:invert-[.92] dark:hue-rotate-180"
+                    loading="lazy"
+                  />
+                ) : (
+                  <p className="px-3 text-center text-xs text-ink-400">
+                    No structure available offline. Draw one from the edit form, or it's looked up
+                    from PubChem when the network allows.
+                  </p>
+                )}
+              </div>
             </div>
             <div className="card flex flex-col items-center justify-center gap-2 p-3">
               {qr ? (
@@ -379,6 +397,8 @@ export function ChemicalDrawer({
               </a>
             )}
           </div>
+
+          <CommentThread resourceType="chemical" resourceId={c.id} />
         </div>
       </Drawer>
 

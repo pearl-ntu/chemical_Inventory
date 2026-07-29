@@ -18,8 +18,10 @@ import {
   Tags,
   Trash2,
   Upload,
+  Wand2,
 } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
+import { CommentThread } from '../components/CommentThread'
 import { ConfirmDialog, Drawer, Field, LoadingScreen, Modal, SearchInput, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
@@ -223,6 +225,9 @@ export default function ResearchAssetsPage() {
   const [selectedChemicalIds, setSelectedChemicalIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<ResearchAsset | null>(null)
+  const [methodsOpen, setMethodsOpen] = useState(false)
+  const [methodsProject, setMethodsProject] = useState('')
+  const [methodsDraft, setMethodsDraft] = useState('')
   const [versionForm, setVersionForm] = useState<ResearchAssetVersionInput | null>(null)
   const [lineageForm, setLineageForm] = useState<{
     source_asset_id: string
@@ -340,6 +345,11 @@ export default function ResearchAssetsPage() {
   }, [shown])
 
   const nonHpcShown = useMemo(() => shown.filter((row) => row.source !== 'hpc'), [shown])
+
+  const projectOptions = useMemo(
+    () => [...new Set(assets.map((asset) => asset.project).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)),
+    [assets],
+  )
 
   const versionsByAsset = useMemo(() => {
     const map = new Map<string, ResearchAssetVersion[]>()
@@ -567,6 +577,22 @@ export default function ResearchAssetsPage() {
     }
   }
 
+  async function draftMethods() {
+    const project = (methodsProject || projectOptions[0] || '').trim()
+    if (!project) return toast.error('Add or choose a project first.')
+    setBusy(true)
+    setMethodsOpen(true)
+    setMethodsProject(project)
+    setMethodsDraft('')
+    try {
+      setMethodsDraft(await api.draftMethods(project))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not draft methods.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) return <LoadingScreen label="Loading research assets..." />
 
   return (
@@ -576,6 +602,26 @@ export default function ResearchAssetsPage() {
         description="Datasets, models, simulations, code, notebooks, compute resources, and the chemicals they connect to."
         actions={
           <>
+            {projectOptions.length > 0 && (
+              <select
+                className="input h-10 max-w-[12rem] py-1.5 text-sm"
+                value={methodsProject}
+                onChange={(e) => setMethodsProject(e.target.value)}
+                title="Project for methods drafting"
+              >
+                <option value="">Project</option>
+                {projectOptions.map((project) => <option key={project} value={project}>{project}</option>)}
+              </select>
+            )}
+            <button
+              className="btn-secondary px-2.5 py-2"
+              title="Draft a methods section from visible PEARL metadata"
+              onClick={() => void draftMethods()}
+              disabled={busy || projectOptions.length === 0}
+            >
+              {busy && methodsOpen && !methodsDraft ? <Spinner className="h-4 w-4" /> : <Wand2 className="h-4 w-4" />}
+              <span className="hidden sm:inline">Methods</span>
+            </button>
             <button
               className="btn-secondary px-2.5 py-2"
               title="Export visible research assets as CSV"
@@ -1140,6 +1186,8 @@ export default function ResearchAssetsPage() {
                 )}
               </div>
             </section>
+
+            <CommentThread resourceType="research_asset" resourceId={detail.id} />
           </div>
         )}
       </Drawer>
@@ -1348,6 +1396,44 @@ export default function ResearchAssetsPage() {
           </div>
         )}
       </Drawer>
+
+      <Modal
+        open={methodsOpen}
+        onClose={() => setMethodsOpen(false)}
+        title="Draft methods section"
+        size="lg"
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setMethodsOpen(false)}>Close</button>
+            <button className="btn-primary ml-auto" onClick={() => void copyText(methodsDraft, toast)} disabled={!methodsDraft}>
+              Copy draft
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Project">
+            <select
+              className="input"
+              value={methodsProject}
+              onChange={(e) => setMethodsProject(e.target.value)}
+            >
+              {projectOptions.map((project) => <option key={project} value={project}>{project}</option>)}
+            </select>
+          </Field>
+          <div className="flex justify-end">
+            <button className="btn-secondary py-1.5 text-xs" onClick={() => void draftMethods()} disabled={busy || !methodsProject}>
+              {busy ? <Spinner className="h-3.5 w-3.5" /> : <Wand2 className="h-3.5 w-3.5" />} Regenerate
+            </button>
+          </div>
+          <textarea
+            className="input min-h-[320px] font-mono text-xs leading-relaxed"
+            value={methodsDraft}
+            onChange={(e) => setMethodsDraft(e.target.value)}
+            placeholder={busy ? 'Drafting from PEARL metadata...' : 'The draft will appear here.'}
+          />
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={Boolean(confirmDelete)}

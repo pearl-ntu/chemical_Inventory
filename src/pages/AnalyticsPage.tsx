@@ -126,6 +126,28 @@ export default function AnalyticsPage() {
           value,
         })),
       underuse,
+      wasteMonthly: (() => {
+        const map = new Map<string, number>()
+        for (const c of chemicals) {
+          if (!c.disposal_date && c.status !== 'disposed') continue
+          const k = (c.disposal_date || c.updated_at.slice(0, 10)).slice(0, 7)
+          map.set(k, (map.get(k) ?? 0) + Math.max(1, c.quantity || 1))
+        }
+        return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, value]) => ({
+          label: new Date(k + '-01T00:00:00').toLocaleDateString('en-SG', { month: 'short', year: '2-digit' }),
+          value,
+        }))
+      })(),
+      wasteClasses: tally(chemicals.filter((c) => c.disposal_date || c.status === 'disposed'), (c) => c.disposal_waste_class ?? 'Unclassified', 10),
+      wasteReasons: tally(chemicals.filter((c) => c.disposal_date || c.status === 'disposed'), (c) => c.disposal_reason ?? 'Not recorded', 10),
+      wasteHazards: (() => {
+        const map = new Map<string, number>()
+        for (const c of chemicals.filter((row) => row.disposal_date || row.status === 'disposed')) {
+          const labels = c.hazards.length ? c.hazards : ['Untagged']
+          for (const h of labels) map.set(h, (map.get(h) ?? 0) + Math.max(1, c.quantity || 1))
+        }
+        return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([label, value]) => ({ label, value }))
+      })(),
     }
   }, [chemicals, requests])
 
@@ -236,6 +258,30 @@ export default function AnalyticsPage() {
         ) : (
           <p className="text-sm text-ink-500">No obvious duplicated stockpile signals from current inventory and request data.</p>
         )}
+      </section>
+
+      <section className="card mt-4 p-4">
+        <h2 className="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">
+          Sustainability / waste dashboard
+        </h2>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Disposals over time</h3>
+            <Timeline points={data.wasteMonthly} height={180} valueLabel="disposed" />
+          </div>
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Waste class</h3>
+            <BarList data={data.wasteClasses} emptyLabel="No disposal classes recorded yet" />
+          </div>
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Disposal reason</h3>
+            <BarList data={data.wasteReasons} emptyLabel="No disposal reasons recorded yet" />
+          </div>
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Waste-generating hazard categories</h3>
+            <BarList data={data.wasteHazards} emptyLabel="No disposed hazard-tagged records yet" />
+          </div>
+        </div>
       </section>
     </>
   )
