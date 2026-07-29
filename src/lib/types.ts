@@ -106,6 +106,7 @@ export interface Profile {
    */
   has_password: boolean
   lab_position: string | null
+  avatar_key?: string | null
   created_at: string
 }
 

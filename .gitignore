@@ -15,6 +15,7 @@ __pycache__/
 !.vscode/extensions.json
 .idea/
 .claude/
+.external/
 supabase/.temp/
 ~$*.xlsx
 vite.config.ts.timestamp-*

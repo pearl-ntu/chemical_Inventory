@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowRight, Check, Database, FlaskConical, Mail, RotateCw, ShieldCheck, ShieldOff, Trash2, UserCheck, UserPlus, Users, X } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, Database, FlaskConical, Info, Mail, MoreVertical, RotateCw, ShieldCheck, ShieldOff, Trash2, UserCheck, UserPlus, Users, X } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { ConfirmDialog, EmptyState, Field, LoadingScreen, Modal, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -8,13 +8,22 @@ import { api, auth } from '../lib/api'
 import { MODE } from '../lib/config'
 import type { Invite, MemberOffboardingSummary, OffboardingItem, OwnershipTransferInput, Profile, Role } from '../lib/types'
 import { useCooldown } from '../lib/useCooldown'
-import { formatDate, formatRelative } from '../lib/utils'
+import { formatRelative } from '../lib/utils'
 
 const ROLE_HELP: Record<Role, string> = {
   admin: 'Full control: approving new accounts, deleting records, and changing what others can do.',
   member: 'Can add, edit and mark containers empty. The right level for most people, once approved.',
   viewer: 'Read-only. Useful for visitors, collaborators and undergraduates.',
 }
+
+const AVATAR_CHOICES = [
+  { key: 'pearl', label: 'Pearl' },
+  { key: 'emerald', label: 'Emerald' },
+  { key: 'violet', label: 'Violet' },
+  { key: 'amber', label: 'Amber' },
+  { key: 'rose', label: 'Rose' },
+  { key: 'ink', label: 'Ink' },
+]
 
 export default function MembersPage() {
   const { profile, isAdmin } = useAuth()
@@ -35,6 +44,12 @@ export default function MembersPage() {
     destinations: Record<string, string>
   } | null>(null)
   const [offboardingBusy, setOffboardingBusy] = useState(false)
+  const [roleMenuFor, setRoleMenuFor] = useState<string | null>(null)
+  const [actionMenuFor, setActionMenuFor] = useState<string | null>(null)
+  const [avatarMenuFor, setAvatarMenuFor] = useState<string | null>(null)
+  const [positionEditFor, setPositionEditFor] = useState<string | null>(null)
+  const [positionDraft, setPositionDraft] = useState('')
+  const [showRoleHelp, setShowRoleHelp] = useState(false)
 
   const [inviteName, setInviteName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -171,6 +186,50 @@ export default function MembersPage() {
     } finally {
       setSaving(null)
     }
+  }
+
+  async function updateMemberProfile(target: Profile, patch: Partial<Profile>) {
+    if (!profile) return
+    setSaving(target.id)
+    try {
+      const updated = await auth.updateProfile(target.id, patch)
+      setMembers((prev) => prev.map((member) => (member.id === target.id ? { ...member, ...updated } : member)))
+      toast.success('Member profile updated.')
+    } catch (err) {
+      if (
+        'avatar_key' in patch &&
+        err instanceof Error &&
+        err.message.toLowerCase().includes('avatar_key')
+      ) {
+        const avatarKey = patch.avatar_key ?? null
+        if (avatarKey) localStorage.setItem(localAvatarStorageKey(target.id), avatarKey)
+        setMembers((prev) => prev.map((member) => (member.id === target.id ? { ...member, avatar_key: avatarKey } : member)))
+        toast.success('Avatar saved in this browser. Run the avatar SQL upgrade to save it for everyone.')
+        return
+      }
+      toast.error(err instanceof Error ? err.message : 'Could not update this member.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  function startPositionEdit(member: Profile) {
+    setActionMenuFor(null)
+    setAvatarMenuFor(null)
+    setRoleMenuFor(null)
+    setPositionEditFor(member.id)
+    setPositionDraft(member.lab_position ?? '')
+  }
+
+  async function savePosition(member: Profile) {
+    const next = positionDraft.trim() || null
+    setPositionEditFor(null)
+    await updateMemberProfile(member, { lab_position: next })
+  }
+
+  async function chooseAvatar(member: Profile, avatarKey: string) {
+    setAvatarMenuFor(null)
+    await updateMemberProfile(member, { avatar_key: avatarKey })
   }
 
   async function revoke(target: Profile) {
@@ -459,132 +518,248 @@ export default function MembersPage() {
         </div>
       ) : (
         <div className="card overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-ink-950/40">
+            <div>
+              <h2 className="text-sm font-bold text-ink-900 dark:text-ink-50">Approved members</h2>
+              <p className="text-xs text-ink-500">Manage sign-in access, roles, and member handover.</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {(Object.keys(ROLE_HELP) as Role[]).map((role) => (
+                <span key={role} className={roleBadgeClass(role)}>
+                  {approvedMembers.filter((member) => member.role === role).length} {role}
+                </span>
+              ))}
+            </div>
+          </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px]">
-              <thead className="border-b border-ink-200 bg-ink-50 dark:border-ink-800 dark:bg-ink-950/50">
-                <tr>
-                  <th className="th">Name</th>
-                  <th className="th">Email</th>
-                  <th className="th">Position</th>
-                  <th className="th">Joined</th>
-                  <th className="th">Access</th>
-                  <th className="th">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
-                {approvedMembers.map((m) => {
-                  // Never let the last admin demote themselves out of the account.
-                  const isLastAdmin = m.role === 'admin' && adminCount === 1
-                  return (
-                    <tr key={m.id}>
-                      <td className="td font-medium text-ink-900 dark:text-ink-50">
-                        {m.full_name}
-                        {m.id === profile?.id && (
-                          <span className="ml-2 text-xs font-normal text-ink-400">you</span>
-                        )}
-                      </td>
-                      <td className="td text-ink-500">{m.email}</td>
-                      <td className="td text-ink-500">{m.lab_position ?? '—'}</td>
-                      <td className="td whitespace-nowrap text-xs text-ink-400">
-                        {formatDate(m.created_at.slice(0, 10))}
-                      </td>
-                      <td className="td">
-                        <select
-                          className="input py-1 text-xs"
-                          value={m.role}
-                          disabled={saving === m.id || isLastAdmin}
-                          title={
-                            isLastAdmin
-                              ? 'This is the only admin — promote someone else first.'
-                              : ROLE_HELP[m.role]
-                          }
-                          onChange={(e) => void changeRole(m, e.target.value as Role)}
-                        >
-                          <option value="admin">Admin</option>
-                          <option value="member">Member</option>
-                          <option value="viewer">Viewer</option>
-                        </select>
-                      </td>
-                      <td className="td">
-                        <div className="flex flex-wrap gap-1.5">
-                          <button
-                            className="btn-secondary py-1.5 text-xs"
-                            disabled={saving === m.id || resendCooldown.secondsLeft(m.id) > 0}
-                            onClick={() => void sendMemberLink(m)}
-                            title="Send a fresh magic sign-in email"
-                          >
-                            {saving === m.id ? <Spinner /> : <Mail className="h-3.5 w-3.5" />}
-                            {resendCooldown.secondsLeft(m.id) > 0
-                              ? `${resendCooldown.secondsLeft(m.id)}s`
-                              : 'Email'}
-                          </button>
-                          <button
-                            className="btn-secondary py-1.5 text-xs"
-                            disabled={saving === m.id || isLastAdmin}
-                            onClick={() => setConfirm({ kind: 'revoke', member: m })}
-                            title={
-                              isLastAdmin
-                                ? 'This is the only admin — promote someone else first.'
-                                : 'Move them back to waiting for approval'
-                            }
-                          >
-                            <ShieldOff className="h-3.5 w-3.5" /> Revoke
-                          </button>
-                          <button
-                            className="btn-secondary py-1.5 text-xs"
-                            disabled={saving === m.id || isLastAdmin || m.id === profile?.id}
-                            onClick={() => void openOffboarding(m)}
-                            title="Review and transfer their chemicals, projects, and computational assets before revoking access"
-                          >
-                            <UserCheck className="h-3.5 w-3.5" /> Offboard
-                          </button>
-                          <button
-                            className="btn-ghost py-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
-                            disabled={saving === m.id || isLastAdmin || m.id === profile?.id}
-                            onClick={() => setConfirm({ kind: 'remove', member: m })}
-                            title={
-                              m.id === profile?.id
-                                ? 'You cannot remove yourself.'
-                                : isLastAdmin
-                                  ? 'This is the only admin — promote someone else first.'
-                                  : 'Remove this profile from the member list'
-                            }
-                          >
-                            <Trash2 className="h-3.5 w-3.5" /> Remove
-                          </button>
+            <div className="min-w-[820px]">
+              <div className="grid grid-cols-[minmax(260px,1fr)_220px_132px_48px] items-center gap-3 border-b border-ink-200 bg-ink-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:border-ink-800 dark:bg-ink-950/50 dark:text-ink-400">
+                <span>Member</span>
+                <span>Position</span>
+                <span className="flex items-center gap-1.5">
+                  Access
+                  <button
+                    type="button"
+                    className="rounded p-0.5 text-ink-400 hover:bg-ink-200 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+                    onClick={() => setShowRoleHelp((value) => !value)}
+                    title="What the access levels mean"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+                <span className="text-right">Actions</span>
+              </div>
+              {showRoleHelp && (
+                <div className="grid gap-2 border-b border-ink-200 bg-white px-4 py-3 text-sm dark:border-ink-800 dark:bg-ink-950/30 md:grid-cols-3">
+                  {(Object.keys(ROLE_HELP) as Role[]).map((role) => (
+                    <div key={role} className="rounded-lg border border-ink-200 px-3 py-2 dark:border-ink-800">
+                      <p className="mb-1 flex items-center justify-between gap-2 font-semibold capitalize text-ink-800 dark:text-ink-100">
+                        <span>{role}</span>
+                        <span className={roleBadgeClass(role)}>{role}</span>
+                      </p>
+                      <p className="text-xs leading-relaxed text-ink-500 dark:text-ink-400">{ROLE_HELP[role]}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            {approvedMembers.map((m) => {
+              // Never let the last admin demote themselves out of the account.
+              const isLastAdmin = m.role === 'admin' && adminCount === 1
+              const avatarKey = m.avatar_key ?? localAvatarKey(m.id)
+              return (
+                <div key={m.id} className="relative grid grid-cols-[minmax(260px,1fr)_220px_132px_48px] items-center gap-3 border-b border-ink-100 px-4 py-2.5 last:border-b-0 hover:bg-ink-50/70 dark:border-ink-800 dark:hover:bg-ink-900/45">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        className={`${avatarClass(avatarKey)} flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold ring-1 ring-inset transition hover:scale-105`}
+                        title="Choose avatar"
+                        onClick={() => {
+                          setActionMenuFor(null)
+                          setRoleMenuFor(null)
+                          setAvatarMenuFor(avatarMenuFor === m.id ? null : m.id)
+                        }}
+                      >
+                        {initialsFor(m.full_name || m.email)}
+                      </button>
+                      {avatarMenuFor === m.id && (
+                        <div className="absolute left-0 top-11 z-40 w-48 rounded-lg border border-ink-200 bg-white p-2 shadow-lg dark:border-ink-800 dark:bg-ink-950">
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-400">Avatar color</p>
+                          <div className="grid grid-cols-3 gap-2">
+                            {AVATAR_CHOICES.map((choice) => (
+                              <button
+                                key={choice.key}
+                                type="button"
+                                className="flex flex-col items-center gap-1 rounded-lg p-1.5 text-[10px] text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-800"
+                                onClick={() => void chooseAvatar(m, choice.key)}
+                              >
+                                <span className={`${avatarClass(choice.key)} flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold ring-1 ring-inset`}>
+                                  {initialsFor(m.full_name || m.email)}
+                                </span>
+                                {choice.label}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-50" title={m.full_name}>
+                        {m.full_name}
+                        {m.id === profile?.id && <span className="ml-2 text-xs font-normal text-ink-400">you</span>}
+                      </p>
+                      <p className="truncate text-xs text-ink-500" title={m.email}>{m.email}</p>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    {positionEditFor === m.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          className="input h-8 min-w-0 text-sm"
+                          value={positionDraft}
+                          placeholder="Research Fellow"
+                          autoFocus
+                          onChange={(event) => setPositionDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') void savePosition(m)
+                            if (event.key === 'Escape') setPositionEditFor(null)
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn-primary h-8 px-2 text-xs"
+                          disabled={saving === m.id}
+                          onClick={() => void savePosition(m)}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="block max-w-full truncate rounded-md px-1 py-1 text-left text-sm text-ink-500 hover:bg-ink-100 hover:text-ink-900 dark:hover:bg-ink-800 dark:hover:text-ink-100"
+                        title={m.lab_position ? `${m.lab_position} - click to edit` : 'Click to add position'}
+                        onClick={() => startPositionEdit(m)}
+                      >
+                        {m.lab_position ?? '—'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className={`${roleBadgeClass(m.role)} h-7 w-full justify-between px-2.5 capitalize ${isLastAdmin ? 'cursor-not-allowed opacity-60' : 'hover:ring-pearl-500/40'}`}
+                      disabled={saving === m.id || isLastAdmin}
+                      title={isLastAdmin ? 'This is the only admin — promote someone else first.' : ROLE_HELP[m.role]}
+                      onClick={() => {
+                        setActionMenuFor(null)
+                        setAvatarMenuFor(null)
+                        setRoleMenuFor(roleMenuFor === m.id ? null : m.id)
+                      }}
+                    >
+                      <span>{m.role}</span>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                    {roleMenuFor === m.id && (
+                      <div className="absolute left-0 top-8 z-30 w-36 rounded-lg border border-ink-200 bg-white p-1 shadow-lg dark:border-ink-800 dark:bg-ink-950">
+                        {(['admin', 'member', 'viewer'] as Role[]).map((role) => (
+                          <button
+                            key={role}
+                            type="button"
+                            className="flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-sm capitalize text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800"
+                            onClick={() => {
+                              setRoleMenuFor(null)
+                              if (role !== m.role) void changeRole(m, role)
+                            }}
+                          >
+                            {role}
+                            {role === m.role && <Check className="h-3.5 w-3.5 text-pearl-600" />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="relative flex justify-end">
+                    <button
+                      type="button"
+                      className="btn-ghost h-8 w-8 px-0"
+                      onClick={() => {
+                        setRoleMenuFor(null)
+                        setAvatarMenuFor(null)
+                        setActionMenuFor(actionMenuFor === m.id ? null : m.id)
+                      }}
+                      title="Member actions"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+                    {actionMenuFor === m.id && (
+                      <div className="absolute right-0 top-9 z-30 w-44 rounded-lg border border-ink-200 bg-white p-1 shadow-lg dark:border-ink-800 dark:bg-ink-950">
+                        <MenuAction
+                          icon={<UserCheck className="h-3.5 w-3.5" />}
+                          label="Edit position"
+                          disabled={saving === m.id}
+                          onClick={() => startPositionEdit(m)}
+                        />
+                        <MenuAction
+                          icon={<Users className="h-3.5 w-3.5" />}
+                          label="Choose avatar"
+                          disabled={saving === m.id}
+                          onClick={() => {
+                            setActionMenuFor(null)
+                            setRoleMenuFor(null)
+                            setAvatarMenuFor(m.id)
+                          }}
+                        />
+                        <MenuAction
+                          icon={<Mail className="h-3.5 w-3.5" />}
+                          label={resendCooldown.secondsLeft(m.id) > 0 ? `Email in ${resendCooldown.secondsLeft(m.id)}s` : 'Email sign-in link'}
+                          disabled={saving === m.id || resendCooldown.secondsLeft(m.id) > 0}
+                          onClick={() => { setActionMenuFor(null); void sendMemberLink(m) }}
+                        />
+                        <MenuAction
+                          icon={<ShieldOff className="h-3.5 w-3.5" />}
+                          label="Revoke access"
+                          disabled={saving === m.id || isLastAdmin}
+                          onClick={() => { setActionMenuFor(null); setConfirm({ kind: 'revoke', member: m }) }}
+                        />
+                        <MenuAction
+                          icon={<UserCheck className="h-3.5 w-3.5" />}
+                          label="Offboard"
+                          disabled={saving === m.id || isLastAdmin || m.id === profile?.id}
+                          onClick={() => { setActionMenuFor(null); void openOffboarding(m) }}
+                        />
+                        <MenuAction
+                          icon={<Trash2 className="h-3.5 w-3.5" />}
+                          label="Remove"
+                          danger
+                          disabled={saving === m.id || isLastAdmin || m.id === profile?.id}
+                          onClick={() => { setActionMenuFor(null); setConfirm({ kind: 'remove', member: m }) }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+            </div>
           </div>
         </div>
       )}
 
-      <div className="card mt-4 p-5">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-500">
-          What the levels mean
-        </h2>
-        <dl className="space-y-2.5 text-sm">
+      <section className="mt-4 rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-950/40">
+        <div className="mb-3 flex items-center gap-2">
+          <Info className="h-4 w-4 text-pearl-600" />
+          <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-50">Access levels</h2>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
           {(Object.keys(ROLE_HELP) as Role[]).map((role) => (
-            <div key={role} className="flex gap-3">
-              <dt className="w-20 shrink-0 font-semibold capitalize text-ink-800 dark:text-ink-100">
-                {role}
-              </dt>
-              <dd className="text-ink-500 dark:text-ink-400">{ROLE_HELP[role]}</dd>
+            <div key={role} className="rounded-lg border border-ink-100 bg-ink-50/70 p-3 dark:border-ink-800 dark:bg-ink-900/40">
+              <span className={roleBadgeClass(role)}>{role}</span>
+              <p className="mt-2 text-xs leading-relaxed text-ink-500 dark:text-ink-400">{ROLE_HELP[role]}</p>
             </div>
           ))}
-        </dl>
-        <p className="mt-4 text-xs text-ink-400">
-          These rules are enforced by the database itself, not just by the interface — an
-          unapproved account cannot read a single row of the inventory even with the browser
-          console open, and a viewer cannot write to it. A role can only be set once someone
-          actually has an account — that's what separates "invited" from "waiting for approval"
-          above.
-        </p>
-      </div>
+        </div>
+      </section>
 
       <ConfirmDialog
         open={confirm?.kind === 'revoke'}
@@ -811,4 +986,64 @@ function HandoverSection({
       )}
     </section>
   )
+}
+
+function MenuAction({
+  icon,
+  label,
+  disabled,
+  danger = false,
+  onClick,
+}: {
+  icon: ReactNode
+  label: string
+  disabled?: boolean
+  danger?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm disabled:pointer-events-none disabled:opacity-45 ${
+        danger
+          ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10'
+          : 'text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800'
+      }`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}
+
+function initialsFor(value: string) {
+  const words = value.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '?'
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
+  return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase()
+}
+
+function localAvatarStorageKey(memberId: string) {
+  return `pearl.memberAvatar.${memberId}`
+}
+
+function localAvatarKey(memberId: string) {
+  return localStorage.getItem(localAvatarStorageKey(memberId))
+}
+
+function avatarClass(key?: string | null) {
+  if (key === 'emerald') return 'bg-emerald-100 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-200 dark:ring-emerald-400/20'
+  if (key === 'violet') return 'bg-violet-100 text-violet-700 ring-violet-600/20 dark:bg-violet-500/15 dark:text-violet-200 dark:ring-violet-400/20'
+  if (key === 'amber') return 'bg-amber-100 text-amber-700 ring-amber-600/20 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20'
+  if (key === 'rose') return 'bg-rose-100 text-rose-700 ring-rose-600/20 dark:bg-rose-500/15 dark:text-rose-200 dark:ring-rose-400/20'
+  if (key === 'ink') return 'bg-ink-200 text-ink-700 ring-ink-500/20 dark:bg-ink-800 dark:text-ink-100 dark:ring-ink-600/40'
+  return 'bg-pearl-100 text-pearl-700 ring-pearl-600/20 dark:bg-pearl-500/15 dark:text-pearl-200 dark:ring-pearl-400/20'
+}
+
+function roleBadgeClass(role: Role) {
+  if (role === 'admin') return 'badge bg-pearl-50 text-pearl-700 ring-pearl-600/20 dark:bg-pearl-500/10 dark:text-pearl-200 dark:ring-pearl-400/20'
+  if (role === 'member') return 'badge bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-400/20'
+  return 'badge bg-ink-100 text-ink-600 ring-ink-500/20 dark:bg-ink-800 dark:text-ink-200 dark:ring-ink-600/40'
 }

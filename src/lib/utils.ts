@@ -146,6 +146,17 @@ export function download(filename: string, content: string, mime = 'text/plain;c
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+export function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export function nextCode(existing: string[]): string {
   let max = 0
   for (const code of existing) {

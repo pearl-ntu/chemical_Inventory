@@ -16,6 +16,7 @@ import agentSource from '../../tools/pearl_hpc_agent.py?raw'
 
 const DEFAULT_AGENT_ROOT = '/scratch/users/<ntu-or-sutd>/<account>/<project-folder>'
 const AGENT_COMMAND = `PEARL_AGENT_ROOT=${DEFAULT_AGENT_ROOT} PEARL_AGENT_TOKEN=choose-a-secret python3 ~/pearl_hpc_agent.py`
+const AGENT_WRITE_COMMAND = `PEARL_AGENT_ROOT=${DEFAULT_AGENT_ROOT} PEARL_AGENT_TOKEN=choose-a-secret PEARL_AGENT_ALLOW_WRITES=1 python3 ~/pearl_hpc_agent.py`
 const TUNNEL_COMMAND = 'ssh -L 8788:127.0.0.1:8787 <your-account>@aspire2antu.nscc.sg'
 
 export default function HpcTutorialPage() {
@@ -93,7 +94,8 @@ export default function HpcTutorialPage() {
             </div>
           </div>
           <div className="mt-4 grid gap-2 text-sm">
-            <Safety label="NSCC files" value="Not deleted, edited, moved, renamed, or uploaded by PEARL." />
+            <Safety label="NSCC files" value="Read-only mode never deletes, edits, moves, renames, or uploads files. Write mode only creates generated job files inside PEARL_AGENT_ROOT." />
+            <Safety label="Generated jobs" value="Workbench can write generated .com/.inp/.sh files only if you start the agent with PEARL_AGENT_ALLOW_WRITES=1." />
             <Safety label="Imported data" value="Folder name, account label, paths, software, method, status, size, energies and warnings where detected." />
             <Safety label="Visibility" value="Computational assets are private to the user who imported or created them. Other members do not see your HPC folders." />
           </div>
@@ -117,6 +119,14 @@ export default function HpcTutorialPage() {
           </div>
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
             Example paths use placeholders. A real scratch folder usually looks like <span className="font-mono">/scratch/users/sutd/your_account/project/run_01</span> or <span className="font-mono">/scratch/users/ntu/your_account/project/run_01</span>. Use the folder you want PEARL to index.
+          </div>
+          <div className="mt-3 rounded-lg border border-ink-200 p-3 text-sm dark:border-ink-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold text-ink-900 dark:text-ink-50">Optional workbench send mode</p>
+              <button className="btn-secondary py-1.5 text-xs" onClick={() => void copy('Write-mode agent command', AGENT_WRITE_COMMAND)}><Clipboard className="h-3.5 w-3.5" /> Copy</button>
+            </div>
+            <pre className="mt-2 overflow-auto rounded bg-ink-950 p-3 text-xs text-ink-50">{AGENT_WRITE_COMMAND}</pre>
+            <p className="mt-2 text-xs text-ink-500">Use this only when you want the Quantum Input Generator to send generated job files into the selected PEARL_AGENT_ROOT folder.</p>
           </div>
         </section>
       </div>

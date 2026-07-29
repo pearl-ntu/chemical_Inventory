@@ -9,6 +9,7 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import ComputationalActivityPage from './pages/ComputationalActivityPage'
 import ComputationalAnalyticsPage from './pages/ComputationalAnalyticsPage'
 import ComputationalDashboardPage from './pages/ComputationalDashboardPage'
+import ComputationalWorkbenchPage from './pages/ComputationalWorkbenchPage'
 import DashboardPage from './pages/DashboardPage'
 import EquipmentPage from './pages/EquipmentPage'
 import HpcSyncPage from './pages/HpcSyncPage'
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="locations" element={<LocationsPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="computational" element={<ComputationalDashboardPage />} />
+          <Route path="computational/workbench" element={<ComputationalWorkbenchPage />} />
           <Route path="computational/analytics" element={<ComputationalAnalyticsPage />} />
           <Route path="computational/activity" element={<ComputationalActivityPage />} />
           <Route path="computational/hpc-sync" element={<HpcSyncPage />} />

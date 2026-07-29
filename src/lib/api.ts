@@ -184,6 +184,7 @@ export const auth = {
         approved: false,
         has_password: false,
         lab_position: null,
+        avatar_key: null,
         created_at: user.created_at ?? new Date().toISOString(),
       }
     }

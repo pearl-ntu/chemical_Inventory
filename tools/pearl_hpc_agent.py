@@ -315,6 +315,50 @@ def read_file(path):
     }
 
 
+def safe_bundle_name(name):
+    name = str(name or "").replace("\\", "/").strip("/")
+    parts = [p for p in name.split("/") if p and p not in (".", "..")]
+    if not parts:
+        raise ValueError("Generated file has no filename")
+    for part in parts:
+        if "/" in part or "\x00" in part:
+            raise ValueError("Generated filename is not safe")
+    return os.path.join(*parts)
+
+
+def write_bundle(target, files, overwrite=False):
+    if not ALLOW_WRITES:
+        raise ValueError("PEARL agent write mode is disabled. Restart the agent with PEARL_AGENT_ALLOW_WRITES=1 to send generated files to HPC.")
+    if not isinstance(files, list) or not files:
+        raise ValueError("No files provided")
+    target_dir = inside_root(target or ".")
+    os.makedirs(target_dir, exist_ok=True)
+    written = []
+    for row in files:
+        filename = safe_bundle_name(row.get("filename"))
+        content = row.get("content")
+        if content is None:
+            content = ""
+        output = os.path.abspath(os.path.join(target_dir, filename))
+        root = target_dir.rstrip(os.sep)
+        if output != root and not output.startswith(root + os.sep):
+            raise ValueError("Generated filename escapes target folder")
+        if os.path.exists(output) and not overwrite:
+            raise ValueError("File already exists: " + filename)
+        folder = os.path.dirname(output)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        with open(output, "w", encoding="utf-8") as handle:
+            handle.write(str(content).replace("\r\n", "\n"))
+        if output.endswith(".sh"):
+            try:
+                os.chmod(output, os.stat(output).st_mode | 0o111)
+            except Exception:
+                pass
+        written.append(output)
+    return {"ok": True, "target": target_dir, "count": len(written), "files": written}
+
+
 class AgentHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         response(self, 200, {"ok": True})
@@ -348,6 +392,8 @@ class AgentHandler(BaseHTTPRequestHandler):
                 return response(self, 200, {"entries": list_folder(str(body.get("path", "."))), "root": ROOT, "account": ACCOUNT_LABEL})
             if route == "/file":
                 return response(self, 200, read_file(str(body.get("path", "."))))
+            if route == "/write-bundle":
+                return response(self, 200, write_bundle(str(body.get("target", ".")), body.get("files"), bool(body.get("overwrite"))))
             return response(self, 404, {"error": "Unknown PEARL agent route"})
         except Exception as exc:
             return response(self, 400, {"error": str(exc)})

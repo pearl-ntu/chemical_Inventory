@@ -221,6 +221,7 @@ export const localDb = {
       // Demo mode is password-only (no magic link), so there's always one.
       has_password: true,
       lab_position: null,
+      avatar_key: null,
       created_at: todayISO(),
       passwordHash: await hashPassword(password),
     }

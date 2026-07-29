@@ -4,6 +4,7 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  Bot,
   ChevronDown,
   ClipboardList,
   Database,
@@ -42,6 +43,7 @@ const NAV = [
 
 const COMPUTATIONAL_NAV = [
   { to: '/computational', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/computational/workbench', label: 'Workbench', icon: Bot, end: false },
   { to: '/research-assets', label: 'Research Assets', icon: Database, end: false },
   { to: '/computational/hpc-sync', label: 'Linux/HPC Sync', icon: Server, end: false },
   { to: '/computational/hpc-tutorial', label: 'HPC Tutorial', icon: BookOpen, end: false },
@@ -474,6 +476,17 @@ export function AppShell({ children }: { children?: ReactNode }) {
               animation — the app otherwise cuts between pages instantly. */}
           <div key={location.pathname} className="mx-auto w-full max-w-[1400px] p-4 sm:p-6 animate-slide-up">
             {children ?? <Outlet />}
+            <footer className="mt-8 border-t border-ink-200 pt-4 text-center text-xs text-ink-400 dark:border-ink-800 dark:text-ink-500">
+              Created and designed by{' '}
+              <a
+                className="font-medium text-pearl-600 hover:text-pearl-700 dark:text-pearl-300 dark:hover:text-pearl-200"
+                href="https://abedisyedaliabbas.github.io/molecular-design-lab/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Syed Ali Abbas Abedi
+              </a>
+            </footer>
           </div>
         </main>
       </div>

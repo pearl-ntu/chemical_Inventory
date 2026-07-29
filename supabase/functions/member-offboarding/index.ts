@@ -20,6 +20,18 @@ function json(body: unknown, status = 200) {
   })
 }
 
+function errorMessage(err: unknown, fallback: string) {
+  if (err instanceof Error) return err.message
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message?: unknown }).message === 'string') {
+    return (err as { message: string }).message
+  }
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return fallback
+  }
+}
+
 function userIdFromJwt(jwt: string): string | null {
   try {
     const payload = jwt.split('.')[1]
@@ -81,7 +93,7 @@ function itemForAsset(row: Record<string, unknown>) {
     stable_id: row.stable_id,
     owner: row.owner,
     created_by: row.created_by,
-    size_label: row.size_label,
+    size_label: row.size_label ?? (typeof row.size_bytes === 'number' ? `${row.size_bytes} bytes` : null),
     storage_link: row.storage_link ?? row.output_link ?? row.repo_link,
     size_bytes: row.size_bytes,
   }
@@ -99,27 +111,104 @@ function projectRollup(items: Array<{ project: unknown; size_bytes?: unknown }>)
   return [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
 }
 
+function uniqueRows(rows: Array<Record<string, unknown>>) {
+  const map = new Map<unknown, Record<string, unknown>>()
+  for (const row of rows) map.set(row.id, row)
+  return [...map.values()]
+}
+
+async function selectChemicals(service: ReturnType<typeof createClient>, targetId: string, aliases: string[]) {
+  const columns = 'id, code, name, project, location, sub_location, status, owner, created_by, quantity, size_value, size_unit'
+  const rows: Array<Record<string, unknown>> = []
+
+  const byOwner = await service
+    .from('chemicals')
+    .select(columns)
+    .in('owner', aliases)
+    .order('name', { ascending: true })
+  if (byOwner.error && /column .* does not exist|Could not find/i.test(byOwner.error.message)) {
+    const fallback = await service
+      .from('chemicals')
+      .select('id, code, name, project, location, sub_location, status, owner, quantity, size_value, size_unit')
+      .in('owner', aliases)
+      .order('name', { ascending: true })
+    if (fallback.error) throw fallback.error
+    rows.push(...(fallback.data ?? []))
+    return uniqueRows(rows)
+  }
+  if (byOwner.error) throw byOwner.error
+  rows.push(...(byOwner.data ?? []))
+
+  const byCreator = await service
+    .from('chemicals')
+    .select(columns)
+    .eq('created_by', targetId)
+    .order('name', { ascending: true })
+  if (!byCreator.error) rows.push(...(byCreator.data ?? []))
+
+  return uniqueRows(rows)
+}
+
+async function selectResearchAssets(service: ReturnType<typeof createClient>, targetId: string, aliases: string[]) {
+  const columns = 'id, stable_id, type, title, project, owner, created_by, created_by_name, status, external_path, storage_link, output_link, repo_link, size_bytes, size_label, software'
+  const fallbackColumns = 'id, stable_id, type, title, project, owner, created_by, created_by_name, status, external_path, storage_link, output_link, repo_link, size_bytes, software'
+  const legacyColumns = 'id, type, title, project, owner, created_by, created_by_name, status, external_path, storage_link, output_link, repo_link, size_bytes, software'
+  const rows: Array<Record<string, unknown>> = []
+
+  async function addResult(query: PromiseLike<{ data: Array<Record<string, unknown>> | null; error: { message: string } | null }>, fallback?: () => PromiseLike<{ data: Array<Record<string, unknown>> | null; error: { message: string } | null }>) {
+    const result = await query
+    if (result.error && /relation .* does not exist|Could not find the table/i.test(result.error.message)) return
+    if (result.error && fallback && /column .* does not exist|Could not find/i.test(result.error.message)) {
+      const fallbackResult = await fallback()
+      if (fallbackResult.error && /relation .* does not exist|Could not find the table/i.test(fallbackResult.error.message)) return
+      if (fallbackResult.error && /column .* does not exist|Could not find/i.test(fallbackResult.error.message)) {
+        return
+      }
+      if (fallbackResult.error) throw fallbackResult.error
+      rows.push(...(fallbackResult.data ?? []))
+      return
+    }
+    if (result.error) throw result.error
+    rows.push(...(result.data ?? []))
+  }
+
+  await addResult(
+    service.from('research_assets').select(columns).eq('created_by', targetId),
+    async () => {
+      const fallback = await service.from('research_assets').select(fallbackColumns).eq('created_by', targetId)
+      if (fallback.error && /stable_id/i.test(fallback.error.message)) {
+        return await service.from('research_assets').select(legacyColumns).eq('created_by', targetId)
+      }
+      return fallback
+    },
+  )
+  if (aliases.length) {
+    await addResult(
+      service.from('research_assets').select(columns).in('owner', aliases),
+      async () => {
+        const fallback = await service.from('research_assets').select(fallbackColumns).in('owner', aliases)
+        if (fallback.error && /stable_id/i.test(fallback.error.message)) {
+          return await service.from('research_assets').select(legacyColumns).in('owner', aliases)
+        }
+        return fallback
+      },
+    )
+  }
+
+  return uniqueRows(rows)
+}
+
 async function loadSummary(service: ReturnType<typeof createClient>, target: Record<string, unknown>) {
   const fullName = String(target.full_name ?? '')
   const email = String(target.email ?? '')
   const targetId = String(target.id)
+  const aliases = [fullName, email].filter((value) => value.trim())
 
-  const { data: chemicals, error: chemicalError } = await service
-    .from('chemicals')
-    .select('id, code, name, project, location, sub_location, status, owner, created_by, quantity, size_value, size_unit')
-    .or(`owner.eq.${fullName},owner.eq.${email},created_by.eq.${targetId}`)
-    .order('name', { ascending: true })
-  if (chemicalError) throw chemicalError
+  const chemicals = await selectChemicals(service, targetId, aliases)
+  const assets = await selectResearchAssets(service, targetId, aliases)
 
-  const { data: assets, error: assetError } = await service
-    .from('research_assets')
-    .select('id, stable_id, type, title, project, owner, created_by, created_by_name, status, external_path, storage_link, output_link, repo_link, size_bytes, size_label, software')
-    .or(`created_by.eq.${targetId},owner.eq.${fullName},owner.eq.${email}`)
-    .order('updated_at', { ascending: false })
-  if (assetError) throw assetError
-
-  const chemicalItems = (chemicals ?? []).map(itemForChemical)
-  const assetItems = (assets ?? []).map(itemForAsset)
+  const chemicalItems = chemicals.map(itemForChemical)
+  const assetItems = assets.map(itemForAsset)
 
   return {
     member: { id: target.id, full_name: target.full_name, email: target.email },
@@ -167,7 +256,7 @@ Deno.serve(async (req) => {
     try {
       return json(await loadSummary(service, target))
     } catch (err) {
-      return json({ error: err instanceof Error ? err.message : 'Could not load handover summary' }, 500)
+      return json({ error: errorMessage(err, 'Could not load handover summary') }, 500)
     }
   }
 

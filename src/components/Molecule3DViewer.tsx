@@ -38,20 +38,29 @@ function load3Dmol() {
 
 export function Molecule3DViewer({
   sdf,
+  data,
+  format = 'sdf',
   coordinates = '3d',
+  emptyMessage = 'No PubChem 3D coordinates available for this compound.',
+  heightClassName = 'h-[220px]',
 }: {
   sdf: string | null
+  data?: string | null
+  format?: 'sdf' | 'xyz'
   coordinates?: '3d' | '2d'
+  emptyMessage?: string
+  heightClassName?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [style, setStyle] = useState<StyleMode>('stick')
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(() => Boolean(window.$3Dmol))
+  const modelData = data ?? sdf
 
   useEffect(() => {
     let live = true
     setError(null)
-    if (!sdf || !ref.current) return
+    if (!modelData || !ref.current) return
     load3Dmol()
       .then(() => {
         if (!live || !ref.current || !window.$3Dmol) return
@@ -59,7 +68,7 @@ export function Molecule3DViewer({
         setReady(true)
         const viewer = window.$3Dmol.createViewer(ref.current, { backgroundColor: 'white' })
         viewer.clear()
-        viewer.addModel(sdf, 'sdf')
+        viewer.addModel(modelData, format)
         viewer.setBackgroundColor('white')
         viewer.setStyle({}, style === 'stick' ? { stick: {} } : style === 'sphere' ? { sphere: { scale: 0.3 }, stick: { radius: 0.08 } } : { line: {} })
         viewer.resize()
@@ -70,10 +79,10 @@ export function Molecule3DViewer({
     return () => {
       live = false
     }
-  }, [sdf, style])
+  }, [format, modelData, style])
 
-  if (!sdf) {
-    return <p className="px-3 text-center text-xs text-ink-400">No PubChem 3D coordinates available for this compound.</p>
+  if (!modelData) {
+    return <p className="px-3 text-center text-xs text-ink-400">{emptyMessage}</p>
   }
 
   return (
@@ -87,7 +96,7 @@ export function Molecule3DViewer({
       </div>
       <div
         ref={ref}
-        className="relative h-[220px] w-full overflow-hidden rounded bg-white [&_canvas]:!h-full [&_canvas]:!max-h-full [&_canvas]:!max-w-full [&_canvas]:!w-full"
+        className={`relative w-full overflow-hidden rounded bg-white [&_canvas]:!h-full [&_canvas]:!max-h-full [&_canvas]:!max-w-full [&_canvas]:!w-full ${heightClassName}`}
       />
       {error && <p className="text-xs text-rose-500">{error}</p>}
       {!ready && !error && <div className="flex justify-center"><Spinner className="h-4 w-4 text-ink-300" /></div>}

@@ -23,6 +23,7 @@ create table if not exists public.profiles (
   full_name    text not null default '',
   role         text not null default 'member' check (role in ('admin', 'member', 'viewer')),
   lab_position text,
+  avatar_key   text,
   created_at   timestamptz not null default now()
 );
 
