@@ -16,6 +16,7 @@ import { HazardBadges } from '../components/HazardBadges'
 import { ImportDialog } from '../components/ImportDialog'
 import { PageHeader } from '../components/Layout'
 import { LazyMolfileSvgRenderer } from '../components/LazyStructure'
+import { StructureEditorDialog, type DrawnStructure } from '../components/StructureEditor'
 import { ConfirmDialog, EmptyState, LoadingScreen, MultiSelect, SearchInput } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
@@ -31,7 +32,9 @@ import {
   type Sort,
   type SortKey,
   type Status,
+  type ChemicalInput,
 } from '../lib/types'
+import { structureMatches } from '../lib/structureSearch'
 import {
   cx,
   download,
@@ -66,6 +69,10 @@ export default function InventoryPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [bulkEmpty, setBulkEmpty] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [formDefaults, setFormDefaults] = useState<Partial<ChemicalInput> | undefined>()
+  const [structureOpen, setStructureOpen] = useState(false)
+  const [structureQuery, setStructureQuery] = useState<DrawnStructure | null>(null)
+  const [structureMode, setStructureMode] = useState<'substructure' | 'exact'>('substructure')
 
   // Deep link from a scanned QR sticker: ?code=PEARL-0042 opens that record.
   useEffect(() => {
@@ -81,13 +88,17 @@ export default function InventoryPage() {
     }
   }, [params, chemicals, setParams, toast])
 
-  // Deep link from a dashboard tile/queue: ?status=low&hazard=Flammable&q=...
+  // Deep link from a dashboard tile/queue or scanned location/member sticker:
+  // ?status=low&hazard=Flammable&q=...&location=Cabinet&owner=Dr%20X
   // presets the filter panel instead of opening a single record.
   useEffect(() => {
     const status = params.get('status')
     const hazard = params.get('hazard')
     const q = params.get('q')
-    if (!status && !hazard && !q) return
+    const location = params.get('location')
+    const owner = params.get('owner')
+    const add = params.get('add')
+    if (!status && !hazard && !q && !location && !owner && !add) return
     const validStatuses = status
       ? status.split(',').filter((s): s is Status => (STATUSES as string[]).includes(s))
       : []
@@ -95,8 +106,15 @@ export default function InventoryPage() {
       ...f,
       ...(status ? { status: validStatuses } : {}),
       ...(hazard ? { hazard: hazard.split(',') } : {}),
+      ...(location ? { location: [location] } : {}),
+      ...(owner ? { owner: [owner] } : {}),
       ...(q ? { q } : {}),
     }))
+    if (add === '1' && owner && canEdit) {
+      setEditing(null)
+      setFormDefaults({ owner })
+      setFormOpen(true)
+    }
     setParams({}, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -137,6 +155,7 @@ export default function InventoryPage() {
       if (filters.owner.length && !filters.owner.includes(c.owner ?? '')) return false
       if (filters.status.length && !filters.status.includes(c.status)) return false
       if (filters.hazard.length && !filters.hazard.some((h) => c.hazards.includes(h))) return false
+      if (structureQuery && !structureMatches(structureQuery.molfile, c.structure_molfile, structureMode)) return false
       return true
     })
 
@@ -150,7 +169,7 @@ export default function InventoryPage() {
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir
       return String(av).localeCompare(String(bv), 'en', { numeric: true, sensitivity: 'base' }) * dir
     })
-  }, [chemicals, filters, sort])
+  }, [chemicals, filters, sort, structureMode, structureQuery])
 
   useEffect(() => setPage(0), [filters, sort])
 
@@ -162,7 +181,8 @@ export default function InventoryPage() {
     filters.status.length +
     filters.system.length +
     filters.owner.length +
-    filters.hazard.length
+    filters.hazard.length +
+    (structureQuery ? 1 : 0)
 
   function toggleSort(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
@@ -232,6 +252,7 @@ export default function InventoryPage() {
                   className="btn-primary"
                   onClick={() => {
                     setEditing(null)
+                    setFormDefaults(undefined)
                     setFormOpen(true)
                   }}
                 >
@@ -289,8 +310,28 @@ export default function InventoryPage() {
             counts={counts.owner}
             onChange={(owner) => setFilters((f) => ({ ...f, owner }))}
           />
+          <button className={structureQuery ? 'btn-primary' : 'btn-secondary'} onClick={() => setStructureOpen(true)}>
+            Structure
+          </button>
+          {structureQuery && (
+            <select
+              className="input w-auto"
+              value={structureMode}
+              onChange={(e) => setStructureMode(e.target.value as 'substructure' | 'exact')}
+              title="Choose how the drawn query is matched against stored structures"
+            >
+              <option value="substructure">Contains fragment</option>
+              <option value="exact">Exact structure</option>
+            </select>
+          )}
           {activeFilterCount > 0 && (
-            <button className="btn-ghost" onClick={() => setFilters({ ...EMPTY_FILTERS, q: filters.q })}>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS, q: filters.q })
+                setStructureQuery(null)
+              }}
+            >
               Clear filters
             </button>
           )}
@@ -494,9 +535,21 @@ export default function InventoryPage() {
         onClose={() => {
           setFormOpen(false)
           setEditing(null)
+          setFormDefaults(undefined)
         }}
+        defaults={formDefaults}
       />
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
+
+      <StructureEditorDialog
+        open={structureOpen}
+        initialMolfile={structureQuery?.molfile}
+        onClose={() => setStructureOpen(false)}
+        onConfirm={(structure) => {
+          setStructureQuery(structure)
+          setStructureOpen(false)
+        }}
+      />
 
       <ConfirmDialog
         open={bulkEmpty}

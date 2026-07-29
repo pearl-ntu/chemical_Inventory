@@ -25,6 +25,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { MODE, LAB_SUBTITLE } from '../lib/config'
 import { cx } from '../lib/utils'
+import { AskPearl } from './AskPearl'
 import { NtuBadge, Wordmark } from './Logo'
 
 const NAV = [
@@ -474,6 +475,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
           </div>
         </main>
       </div>
+      <AskPearl />
     </div>
   )
 }

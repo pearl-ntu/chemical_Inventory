@@ -5,7 +5,7 @@
  * so the cloud and demo backends stay interchangeable and the UI has exactly
  * one place to look for a bug.
  */
-import { IS_CLOUD } from './config'
+import { IS_CLOUD, SUPABASE_ANON_KEY, SUPABASE_URL } from './config'
 import { localDb } from './localDb'
 import { SEED_ROWS } from './seedData'
 import { supabase, requireSupabase } from './supabase'
@@ -14,16 +14,27 @@ import type {
   ActivityEntry,
   Chemical,
   ChemicalInput,
+  ChemicalRequest,
+  ChemicalRequestInput,
   Invite,
   Profile,
   ResearchAsset,
   ResearchAssetChemicalLink,
   ResearchAssetInput,
+  ResearchAssetLink,
+  ResearchAssetLinkInput,
+  ResearchAssetVersion,
+  ResearchAssetVersionInput,
   Role,
 } from './types'
 import { nextCode } from './utils'
 
 export class ApiError extends Error {}
+
+export interface AskPearlReply {
+  answer: string
+  sources?: Array<{ table: string; count: number }>
+}
 
 function fail(context: string, error: { message: string } | null): never {
   throw new ApiError(`${context}: ${error?.message ?? 'unknown error'}`)
@@ -35,6 +46,14 @@ function missingTable(error: { message?: string; code?: string } | null): boolea
     error?.code === '42P01' ||
     /Could not find the table|relation .* does not exist/i.test(error?.message ?? '')
   )
+}
+
+function nextStableId(rows: Array<{ stable_id: string | null }>): string {
+  const max = rows.reduce((highest, row) => {
+    const n = Number(row.stable_id?.replace(/\D/g, '') || 0)
+    return Number.isFinite(n) ? Math.max(highest, n) : highest
+  }, 0)
+  return `PEARL-RA-${String(max + 1).padStart(6, '0')}`
 }
 
 /**
@@ -298,6 +317,37 @@ export const auth = {
 // ---------------------------------------------------------------------------
 
 export const api = {
+  async askPearl(question: string, workspace?: 'experimental' | 'computational'): Promise<AskPearlReply> {
+    if (!IS_CLOUD) {
+      return {
+        answer:
+          'Ask PEARL is available when the app is connected to Supabase and a server-side model provider secret is configured.',
+        sources: [],
+      }
+    }
+    const sb = requireSupabase()
+    await sb.auth.refreshSession().catch(() => null)
+    const { data: userData, error: userError } = await sb.auth.getUser()
+    if (userError || !userData.user) throw new ApiError('Ask PEARL needs a fresh sign-in session.')
+    const { data: sessionData } = await sb.auth.getSession()
+    const token = sessionData.session?.access_token
+    if (!token) throw new ApiError('Ask PEARL needs a signed-in session.')
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/ask-pearl`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ question, workspace }),
+    })
+    const data = await res.json().catch(() => null)
+    if (!res.ok) {
+      throw new ApiError(data?.error ?? data?.message ?? `Ask PEARL failed with HTTP ${res.status}.`)
+    }
+    return data as AskPearlReply
+  },
+
   async listChemicals(): Promise<Chemical[]> {
     if (!IS_CLOUD) return localDb.chemicals()
     const { data, error } = await requireSupabase()
@@ -622,6 +672,7 @@ export const api = {
       size_bytes: row.size_bytes ?? null,
       tags: row.tags ?? [],
       visibility: row.visibility ?? 'private',
+      stable_id: row.stable_id ?? null,
     }))
   },
 
@@ -686,9 +737,15 @@ export const api = {
       logLocal(null, 'created', `Added research asset ${row.title}`, actor)
       return row
     }
+    const { data: ids } = await requireSupabase().from('research_assets').select('stable_id')
     const { data, error } = await requireSupabase()
       .from('research_assets')
-      .insert({ ...input, created_by: actor.id, created_by_name: actor.full_name })
+      .insert({
+        ...input,
+        stable_id: nextStableId((ids ?? []) as Array<{ stable_id: string | null }>),
+        created_by: actor.id,
+        created_by_name: actor.full_name,
+      })
       .select()
       .single()
     if (missingTable(error)) {
@@ -713,9 +770,26 @@ export const api = {
       logLocal(null, existing ? 'updated' : 'created', `${existing ? 'Updated' : 'Added'} research asset ${row.title}`, actor)
       return row
     }
+    const sb = requireSupabase()
+    const { data: existingRows } = await sb
+      .from('research_assets')
+      .select('id, stable_id')
+      .eq('created_by', actor.id)
+      .eq('source', input.source)
+      .eq('source_external_id', input.source_external_id)
+      .limit(1)
+    const stableId = (existingRows?.[0] as { stable_id?: string | null } | undefined)?.stable_id
+    const payload = stableId
+      ? { ...input, stable_id: stableId, created_by: actor.id, created_by_name: actor.full_name }
+      : {
+          ...input,
+          stable_id: nextStableId(await sb.from('research_assets').select('stable_id').then(({ data }) => (data ?? []) as Array<{ stable_id: string | null }>)),
+          created_by: actor.id,
+          created_by_name: actor.full_name,
+        }
     const { data, error } = await requireSupabase()
       .from('research_assets')
-      .upsert({ ...input, created_by: actor.id, created_by_name: actor.full_name }, { onConflict: 'created_by,source,source_external_id' })
+      .upsert(payload, { onConflict: 'created_by,source,source_external_id' })
       .select()
       .single()
     if (missingTable(error)) {
@@ -770,6 +844,162 @@ export const api = {
     }
     if (error) fail('Could not delete research asset', error)
     await api.log(null, 'deleted', `Deleted research asset ${row.title}`, actor)
+  },
+
+  async listResearchAssetVersions(assetId?: string): Promise<ResearchAssetVersion[]> {
+    if (!IS_CLOUD) {
+      const rows = localDb.researchAssetVersions()
+      return assetId ? rows.filter((row) => row.research_asset_id === assetId) : rows
+    }
+    let query = requireSupabase()
+      .from('research_asset_versions')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (assetId) query = query.eq('research_asset_id', assetId)
+    const { data, error } = await query
+    if (missingTable(error)) return []
+    if (error) fail('Could not load research asset versions', error)
+    return (data ?? []) as ResearchAssetVersion[]
+  },
+
+  async createResearchAssetVersion(input: ResearchAssetVersionInput, actor: Profile): Promise<ResearchAssetVersion> {
+    if (!IS_CLOUD) {
+      const row = localDb.insertResearchAssetVersion(input, actor)
+      logLocal(null, 'updated', `Added version ${row.version_number} to research asset`, actor)
+      return row
+    }
+    const { data, error } = await requireSupabase()
+      .from('research_asset_versions')
+      .insert({ ...input, created_by: actor.id, created_by_name: actor.full_name })
+      .select()
+      .single()
+    if (missingTable(error)) {
+      const row = localDb.insertResearchAssetVersion(input, actor)
+      logLocal(null, 'updated', `Added local research asset version ${row.version_number}`, actor)
+      return row
+    }
+    if (error) fail('Could not add research asset version', error)
+    await api.log(null, 'updated', `Added research asset version ${input.version_number}`, actor)
+    return data as ResearchAssetVersion
+  },
+
+  async deleteResearchAssetVersion(row: ResearchAssetVersion, actor: Profile): Promise<void> {
+    if (!IS_CLOUD) {
+      localDb.deleteResearchAssetVersion(row.id)
+      logLocal(null, 'deleted', `Deleted research asset version ${row.version_number}`, actor)
+      return
+    }
+    const { error } = await requireSupabase().from('research_asset_versions').delete().eq('id', row.id)
+    if (missingTable(error)) {
+      localDb.deleteResearchAssetVersion(row.id)
+      return
+    }
+    if (error) fail('Could not delete research asset version', error)
+    await api.log(null, 'deleted', `Deleted research asset version ${row.version_number}`, actor)
+  },
+
+  async listResearchAssetLinks(): Promise<ResearchAssetLink[]> {
+    if (!IS_CLOUD) return localDb.researchAssetLinks()
+    const { data, error } = await requireSupabase()
+      .from('research_asset_links')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (missingTable(error)) return []
+    if (error) fail('Could not load research asset lineage', error)
+    return (data ?? []) as ResearchAssetLink[]
+  },
+
+  async createResearchAssetLink(input: ResearchAssetLinkInput, actor: Profile): Promise<ResearchAssetLink> {
+    if (!IS_CLOUD) {
+      const row = localDb.insertResearchAssetLink(input, actor)
+      logLocal(null, 'updated', `Linked research assets`, actor)
+      return row
+    }
+    const { data, error } = await requireSupabase()
+      .from('research_asset_links')
+      .insert({ ...input, created_by: actor.id, created_by_name: actor.full_name })
+      .select()
+      .single()
+    if (missingTable(error)) {
+      const row = localDb.insertResearchAssetLink(input, actor)
+      logLocal(null, 'updated', 'Linked local research assets', actor)
+      return row
+    }
+    if (error) fail('Could not link research assets', error)
+    await api.log(null, 'updated', 'Linked research assets', actor)
+    return data as ResearchAssetLink
+  },
+
+  async deleteResearchAssetLink(row: ResearchAssetLink, actor: Profile): Promise<void> {
+    if (!IS_CLOUD) {
+      localDb.deleteResearchAssetLink(row.id)
+      logLocal(null, 'deleted', 'Deleted research asset link', actor)
+      return
+    }
+    const { error } = await requireSupabase().from('research_asset_links').delete().eq('id', row.id)
+    if (missingTable(error)) {
+      localDb.deleteResearchAssetLink(row.id)
+      return
+    }
+    if (error) fail('Could not delete research asset link', error)
+    await api.log(null, 'deleted', 'Deleted research asset link', actor)
+  },
+
+  async listChemicalRequests(): Promise<ChemicalRequest[]> {
+    if (!IS_CLOUD) return localDb.chemicalRequests()
+    const { data, error } = await requireSupabase()
+      .from('chemical_requests')
+      .select('*')
+      .order('requested_at', { ascending: false })
+    if (missingTable(error)) return []
+    if (error) fail('Could not load chemical requests', error)
+    return (data ?? []) as ChemicalRequest[]
+  },
+
+  async createChemicalRequest(input: ChemicalRequestInput, actor: Profile): Promise<ChemicalRequest> {
+    if (!IS_CLOUD) {
+      const row = localDb.insertChemicalRequest(input, actor)
+      logLocal(null, 'created', `Requested ${row.chemical_name_or_cas}`, actor)
+      return row
+    }
+    const { data, error } = await requireSupabase()
+      .from('chemical_requests')
+      .insert({ ...input, requested_by: actor.id, requested_by_name: actor.full_name })
+      .select()
+      .single()
+    if (missingTable(error)) {
+      const row = localDb.insertChemicalRequest(input, actor)
+      logLocal(null, 'created', `Requested ${row.chemical_name_or_cas}`, actor)
+      return row
+    }
+    if (error) fail('Could not submit chemical request', error)
+    await api.log(null, 'created', `Requested ${input.chemical_name_or_cas}`, actor)
+    return data as ChemicalRequest
+  },
+
+  async updateChemicalRequest(id: string, patch: Partial<ChemicalRequest>, actor: Profile): Promise<ChemicalRequest> {
+    const payload = patch.status && patch.status !== 'pending'
+      ? { ...patch, decided_by: actor.id, decided_by_name: actor.full_name, decided_at: new Date().toISOString() }
+      : patch
+    if (!IS_CLOUD) {
+      const row = localDb.updateChemicalRequest(id, payload)
+      logLocal(null, 'updated', `Updated request ${row.chemical_name_or_cas}`, actor)
+      return row
+    }
+    const { data, error } = await requireSupabase()
+      .from('chemical_requests')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single()
+    if (missingTable(error)) {
+      const row = localDb.updateChemicalRequest(id, payload)
+      logLocal(null, 'updated', `Updated request ${row.chemical_name_or_cas}`, actor)
+      return row
+    }
+    if (error) fail('Could not update chemical request', error)
+    await api.log(null, 'updated', `Updated chemical request ${(data as ChemicalRequest).chemical_name_or_cas}`, actor)
+    return data as ChemicalRequest
   },
 
   /** Live updates so two people at two benches see the same shelf. */

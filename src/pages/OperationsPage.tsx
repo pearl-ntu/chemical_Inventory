@@ -1,8 +1,12 @@
-import { useMemo } from 'react'
-import { AlertTriangle, ClipboardList, Download, FileWarning, PackageSearch, Repeat2, ShieldAlert } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Check, ClipboardList, Download, FileWarning, PackageSearch, Plus, Repeat2, ShieldAlert, X } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
+import { Field, Spinner } from '../components/ui'
+import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
-import { HAZARDS, type Chemical } from '../lib/types'
+import { useToast } from '../context/ToastContext'
+import { api } from '../lib/api'
+import { HAZARDS, type Chemical, type ChemicalRequest, type ChemicalRequestInput } from '../lib/types'
 import { download, formatDate, formatSize, todayISO } from '../lib/utils'
 
 const INCOMPATIBLE: Array<[string, string, string]> = [
@@ -29,7 +33,31 @@ function Card({ title, icon, children }: { title: string; icon: React.ReactNode;
 }
 
 export default function OperationsPage() {
+  const { profile, isAdmin, canEdit } = useAuth()
   const { chemicals } = useInventory()
+  const toast = useToast()
+  const [requests, setRequests] = useState<ChemicalRequest[]>([])
+  const [requestForm, setRequestForm] = useState<ChemicalRequestInput>({
+    chemical_name_or_cas: '',
+    quantity: '',
+    supplier: '',
+    justification_project: '',
+    notes: '',
+  })
+  const [busy, setBusy] = useState(false)
+
+  async function loadRequests() {
+    try {
+      setRequests(await api.listChemicalRequests())
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not load chemical requests.')
+    }
+  }
+
+  useEffect(() => {
+    void loadRequests()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const data = useMemo(() => {
     const stocked = chemicals.filter(active)
@@ -63,8 +91,61 @@ export default function OperationsPage() {
       }))
     })
 
-    return { stocked, expiring, openedLong, reorder, missingDocs, disposal, conflicts }
-  }, [chemicals])
+    const requestNames = new Set(requests.map((request) => request.chemical_name_or_cas.toLowerCase().trim()).filter(Boolean))
+    const duplicates = [...new Map(stocked.map((c) => [c.cas || c.name.toLowerCase(), stocked.filter((x) => (x.cas || x.name.toLowerCase()) === (c.cas || c.name.toLowerCase()))])).values()]
+      .filter((rows) => rows.length > 1)
+    const underuse = duplicates
+      .map((rows) => ({
+        key: rows[0].cas || rows[0].name,
+        rows,
+        totalContainers: rows.reduce((sum, row) => sum + row.quantity, 0),
+        locations: new Set(rows.map((row) => row.location ?? 'Unassigned')).size,
+        requestedRecently: requestNames.has(rows[0].cas?.toLowerCase() ?? '') || requestNames.has(rows[0].name.toLowerCase()),
+      }))
+      .filter((group) => group.totalContainers >= 3 && group.locations >= 2 && !group.requestedRecently)
+      .slice(0, 12)
+
+    return { stocked, expiring, openedLong, reorder, missingDocs, disposal, conflicts, underuse }
+  }, [chemicals, requests])
+
+  const pendingRequests = requests.filter((request) => request.status === 'pending')
+  const myRequests = profile ? requests.filter((request) => request.requested_by === profile.id) : []
+
+  async function submitRequest() {
+    if (!profile || !canEdit) return
+    if (!requestForm.chemical_name_or_cas.trim()) return toast.error('Enter a chemical name or CAS number.')
+    setBusy(true)
+    try {
+      const row = await api.createChemicalRequest({
+        chemical_name_or_cas: requestForm.chemical_name_or_cas.trim(),
+        quantity: requestForm.quantity?.trim() || null,
+        supplier: requestForm.supplier?.trim() || null,
+        justification_project: requestForm.justification_project?.trim() || null,
+        notes: requestForm.notes?.trim() || null,
+      }, profile)
+      setRequests((prev) => [row, ...prev])
+      setRequestForm({ chemical_name_or_cas: '', quantity: '', supplier: '', justification_project: '', notes: '' })
+      toast.success('Request submitted.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not submit request.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setRequestStatus(row: ChemicalRequest, status: ChemicalRequest['status'], receivedId: string | null = null) {
+    if (!profile) return
+    setBusy(true)
+    try {
+      const updated = await api.updateChemicalRequest(row.id, { status, received_container_id: receivedId }, profile)
+      setRequests((prev) => prev.map((request) => request.id === row.id ? updated : request))
+      toast.success(`Request marked ${status}.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update request.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   function exportAudit() {
     const rows = data.stocked.map((c) => ({
@@ -133,6 +214,41 @@ export default function OperationsPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
+        {canEdit && (
+          <Card title="Request chemical" icon={<Plus className="h-4 w-4" />}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Chemical name or CAS" required>
+                <input className="input" value={requestForm.chemical_name_or_cas} onChange={(e) => setRequestForm((f) => ({ ...f, chemical_name_or_cas: e.target.value }))} placeholder="acetone, 67-64-1..." />
+              </Field>
+              <Field label="Quantity">
+                <input className="input" value={requestForm.quantity ?? ''} onChange={(e) => setRequestForm((f) => ({ ...f, quantity: e.target.value }))} placeholder="2 x 2.5 L" />
+              </Field>
+              <Field label="Supplier">
+                <input className="input" value={requestForm.supplier ?? ''} onChange={(e) => setRequestForm((f) => ({ ...f, supplier: e.target.value }))} />
+              </Field>
+              <Field label="Project / justification">
+                <input className="input" value={requestForm.justification_project ?? ''} onChange={(e) => setRequestForm((f) => ({ ...f, justification_project: e.target.value }))} />
+              </Field>
+            </div>
+            <Field label="Notes">
+              <textarea className="input min-h-[72px]" value={requestForm.notes ?? ''} onChange={(e) => setRequestForm((f) => ({ ...f, notes: e.target.value }))} />
+            </Field>
+            <div className="mt-3 flex justify-end">
+              <button className="btn-primary" onClick={() => void submitRequest()} disabled={busy}>
+                {busy ? <Spinner /> : <Plus className="h-4 w-4" />} Submit request
+              </button>
+            </div>
+          </Card>
+        )}
+        <Card title={isAdmin ? 'Pending approvals' : 'My requests'} icon={<ClipboardList className="h-4 w-4" />}>
+          <RequestList
+            rows={isAdmin ? pendingRequests : myRequests}
+            chemicals={chemicals}
+            isAdmin={isAdmin}
+            busy={busy}
+            onStatus={(row, status, receivedId) => void setRequestStatus(row, status, receivedId)}
+          />
+        </Card>
         <Card title="Low stock / reorder list" icon={<PackageSearch className="h-4 w-4" />}>
           {table(data.reorder, (c) => `${formatSize(c)} - ${c.supplier ?? 'no supplier'} - ${c.reorder_priority}`)}
         </Card>
@@ -163,7 +279,80 @@ export default function OperationsPage() {
         <Card title="Disposal log" icon={<ClipboardList className="h-4 w-4" />}>
           {table(data.disposal, (c) => `${c.disposal_date ? formatDate(c.disposal_date) : 'not dated'} - ${c.disposal_waste_class ?? 'waste class missing'}`)}
         </Card>
+        <Card title="Usage / duplication intelligence" icon={<PackageSearch className="h-4 w-4" />}>
+          {data.underuse.length ? (
+            <div className="space-y-2">
+              {data.underuse.map((group) => (
+                <div key={group.key} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <p className="font-semibold text-amber-900 dark:text-amber-100">{group.key}</p>
+                  <p className="mt-1 text-amber-800/80 dark:text-amber-200/75">
+                    {group.totalContainers} containers across {group.locations} locations, with no matching recent request. Consider consolidating before reordering.
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-ink-500">No obvious hoarding/underuse signals from the current request and inventory data.</p>
+          )}
+        </Card>
       </div>
     </>
+  )
+}
+
+function RequestList({
+  rows,
+  chemicals,
+  isAdmin,
+  busy,
+  onStatus,
+}: {
+  rows: ChemicalRequest[]
+  chemicals: Chemical[]
+  isAdmin: boolean
+  busy: boolean
+  onStatus: (row: ChemicalRequest, status: ChemicalRequest['status'], receivedId?: string | null) => void
+}) {
+  const [receivedByRequest, setReceivedByRequest] = useState<Record<string, string>>({})
+  if (rows.length === 0) return <p className="text-sm text-ink-500">No requests here.</p>
+  return (
+    <div className="max-h-96 overflow-auto">
+      <div className="space-y-2">
+        {rows.map((row) => (
+          <div key={row.id} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="font-semibold text-ink-900 dark:text-ink-50">{row.chemical_name_or_cas}</p>
+                <p className="mt-1 text-xs text-ink-500">
+                  {row.quantity || 'quantity not specified'} - {row.supplier || 'supplier not specified'} - requested by {row.requested_by_name ?? 'unknown'}
+                </p>
+                {row.justification_project && <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">{row.justification_project}</p>}
+                {row.notes && <p className="mt-1 text-xs text-ink-500">{row.notes}</p>}
+              </div>
+              <span className="badge bg-ink-100 text-ink-600 ring-ink-500/20 dark:bg-ink-800 dark:text-ink-300">{row.status}</span>
+            </div>
+            {isAdmin && row.status === 'pending' && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button className="btn-secondary py-1.5 text-xs text-emerald-700" onClick={() => onStatus(row, 'approved')} disabled={busy}>
+                  <Check className="h-3.5 w-3.5" /> Approve
+                </button>
+                <button className="btn-secondary py-1.5 text-xs text-rose-700" onClick={() => onStatus(row, 'declined')} disabled={busy}>
+                  <X className="h-3.5 w-3.5" /> Decline
+                </button>
+                <select className="input max-w-xs py-1.5 text-xs" value={receivedByRequest[row.id] ?? ''} onChange={(e) => setReceivedByRequest((prev) => ({ ...prev, [row.id]: e.target.value }))}>
+                  <option value="">Link received container...</option>
+                  {chemicals.slice(0, 300).map((chemical) => (
+                    <option key={chemical.id} value={chemical.id}>{chemical.code} - {chemical.name}</option>
+                  ))}
+                </select>
+                <button className="btn-primary py-1.5 text-xs" onClick={() => onStatus(row, 'received', receivedByRequest[row.id] || null)} disabled={busy}>
+                  Mark received
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

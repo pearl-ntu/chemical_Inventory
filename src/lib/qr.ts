@@ -6,13 +6,27 @@ import QRCode from 'qrcode'
  * currently served from, which keeps local, Pages, and self-hosted deployments
  * all working without configuration.
  */
-export function deepLink(code: string): string {
+function appUrl(path: string): string {
   const { origin, pathname } = window.location
-  return `${origin}${pathname}#/inventory?code=${encodeURIComponent(code)}`
+  return `${origin}${pathname}#${path}`
 }
 
-export async function qrDataUrl(code: string, size = 256): Promise<string> {
-  return QRCode.toDataURL(deepLink(code), {
+export function containerDeepLink(code: string): string {
+  return appUrl(`/inventory?code=${encodeURIComponent(code)}`)
+}
+
+export function locationDeepLink(location: string): string {
+  return appUrl(`/inventory?location=${encodeURIComponent(location)}`)
+}
+
+export function memberDeepLink(owner: string, openAdd = false): string {
+  const params = new URLSearchParams({ owner })
+  if (openAdd) params.set('add', '1')
+  return appUrl(`/inventory?${params.toString()}`)
+}
+
+export async function qrDataUrl(value: string, size = 256): Promise<string> {
+  return QRCode.toDataURL(value, {
     width: size,
     margin: 1,
     errorCorrectionLevel: 'M',

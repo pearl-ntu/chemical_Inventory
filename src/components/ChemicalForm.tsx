@@ -134,11 +134,13 @@ export function ChemicalForm({
   open,
   onClose,
   editing,
+  defaults,
 }: {
   open: boolean
   onClose: () => void
   /** Pass an existing row to edit it; omit to register a new container. */
   editing?: Chemical | null
+  defaults?: Partial<ChemicalInput>
 }) {
   const { chemicals, create, update } = useInventory()
   const { profile } = useAuth()
@@ -157,8 +159,8 @@ export function ChemicalForm({
     if (!open) return
     setErrors({})
     setEnrichedInfo(null)
-    setForm(editing ? { ...editing } : loadNewChemicalDraft(profile?.full_name ?? ''))
-  }, [open, editing, profile])
+    setForm(editing ? { ...editing } : { ...loadNewChemicalDraft(profile?.full_name ?? ''), ...defaults })
+  }, [open, editing, profile, defaults])
 
   useEffect(() => {
     if (!open || editing) return

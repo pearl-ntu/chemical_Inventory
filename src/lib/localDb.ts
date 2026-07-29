@@ -11,10 +11,16 @@
 import type {
   ActivityEntry,
   Chemical,
+  ChemicalRequest,
+  ChemicalRequestInput,
   Profile,
   ResearchAsset,
   ResearchAssetChemicalLink,
   ResearchAssetInput,
+  ResearchAssetLink,
+  ResearchAssetLinkInput,
+  ResearchAssetVersion,
+  ResearchAssetVersionInput,
   Role,
 } from './types'
 import { SEED_ROWS } from './seedData'
@@ -27,6 +33,9 @@ const K = {
   session: 'pearl.demo.session',
   researchAssets: 'pearl.demo.research_assets',
   researchAssetChemicals: 'pearl.demo.research_asset_chemicals',
+  researchAssetVersions: 'pearl.demo.research_asset_versions',
+  researchAssetLinks: 'pearl.demo.research_asset_links',
+  chemicalRequests: 'pearl.demo.chemical_requests',
 } as const
 
 interface DemoUser extends Profile {
@@ -52,6 +61,14 @@ function write(key: string, value: unknown) {
 
 function uid(): string {
   return crypto.randomUUID()
+}
+
+function nextResearchAssetStableId(rows: ResearchAsset[]): string {
+  const max = rows.reduce((highest, row) => {
+    const n = Number(row.stable_id?.replace(/\D/g, '') || 0)
+    return Number.isFinite(n) ? Math.max(highest, n) : highest
+  }, 0)
+  return `PEARL-RA-${String(max + 1).padStart(6, '0')}`
 }
 
 export async function hashPassword(pw: string): Promise<string> {
@@ -244,6 +261,7 @@ export const localDb = {
       size_bytes: row.size_bytes ?? null,
       tags: row.tags ?? [],
       visibility: row.visibility ?? 'private',
+      stable_id: row.stable_id ?? null,
     }))
   },
 
@@ -257,6 +275,7 @@ export const localDb = {
     const row: ResearchAsset = {
       ...input,
       id: uid(),
+      stable_id: nextResearchAssetStableId(rows),
       created_by: actor.id,
       created_by_name: actor.full_name,
       created_at: now,
@@ -281,6 +300,12 @@ export const localDb = {
     localDb.saveResearchAssetChemicalLinks(
       localDb.researchAssetChemicalLinks().filter((r) => r.research_asset_id !== id),
     )
+    localDb.saveResearchAssetVersions(
+      localDb.researchAssetVersions().filter((r) => r.research_asset_id !== id),
+    )
+    localDb.saveResearchAssetLinks(
+      localDb.researchAssetLinks().filter((r) => r.source_asset_id !== id && r.target_asset_id !== id),
+    )
   },
 
   researchAssetChemicalLinks(): ResearchAssetChemicalLink[] {
@@ -302,6 +327,89 @@ export const localDb = {
       .researchAssetChemicalLinks()
       .filter((row) => row.research_asset_id !== assetId)
     localDb.saveResearchAssetChemicalLinks([...others, ...nextLinks])
+  },
+
+  researchAssetVersions(): ResearchAssetVersion[] {
+    return read<ResearchAssetVersion[]>(K.researchAssetVersions, [])
+  },
+
+  saveResearchAssetVersions(rows: ResearchAssetVersion[]) {
+    write(K.researchAssetVersions, rows)
+  },
+
+  insertResearchAssetVersion(input: ResearchAssetVersionInput, actor: Profile): ResearchAssetVersion {
+    const row: ResearchAssetVersion = {
+      ...input,
+      id: uid(),
+      created_at: new Date().toISOString(),
+      created_by: actor.id,
+      created_by_name: actor.full_name,
+    }
+    localDb.saveResearchAssetVersions([row, ...localDb.researchAssetVersions()])
+    return row
+  },
+
+  deleteResearchAssetVersion(id: string) {
+    localDb.saveResearchAssetVersions(localDb.researchAssetVersions().filter((row) => row.id !== id))
+  },
+
+  researchAssetLinks(): ResearchAssetLink[] {
+    return read<ResearchAssetLink[]>(K.researchAssetLinks, [])
+  },
+
+  saveResearchAssetLinks(rows: ResearchAssetLink[]) {
+    write(K.researchAssetLinks, rows)
+  },
+
+  insertResearchAssetLink(input: ResearchAssetLinkInput, actor: Profile): ResearchAssetLink {
+    const row: ResearchAssetLink = {
+      ...input,
+      id: uid(),
+      created_at: new Date().toISOString(),
+      created_by: actor.id,
+      created_by_name: actor.full_name,
+    }
+    localDb.saveResearchAssetLinks([row, ...localDb.researchAssetLinks()])
+    return row
+  },
+
+  deleteResearchAssetLink(id: string) {
+    localDb.saveResearchAssetLinks(localDb.researchAssetLinks().filter((row) => row.id !== id))
+  },
+
+  chemicalRequests(): ChemicalRequest[] {
+    return read<ChemicalRequest[]>(K.chemicalRequests, [])
+  },
+
+  saveChemicalRequests(rows: ChemicalRequest[]) {
+    write(K.chemicalRequests, rows)
+  },
+
+  insertChemicalRequest(input: ChemicalRequestInput, actor: Profile): ChemicalRequest {
+    const row: ChemicalRequest = {
+      ...input,
+      id: uid(),
+      requested_by: actor.id,
+      requested_by_name: actor.full_name,
+      status: 'pending',
+      requested_at: new Date().toISOString(),
+      decided_by: null,
+      decided_by_name: null,
+      decided_at: null,
+      received_container_id: null,
+    }
+    localDb.saveChemicalRequests([row, ...localDb.chemicalRequests()])
+    return row
+  },
+
+  updateChemicalRequest(id: string, patch: Partial<ChemicalRequest>): ChemicalRequest {
+    const rows = localDb.chemicalRequests()
+    const idx = rows.findIndex((row) => row.id === id)
+    if (idx === -1) throw new Error('Chemical request not found')
+    const updated = { ...rows[idx], ...patch }
+    rows[idx] = updated
+    localDb.saveChemicalRequests(rows)
+    return updated
   },
 
   session(): Profile | null {

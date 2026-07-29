@@ -1,9 +1,11 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BarList, Timeline } from '../components/charts'
 import { PageHeader } from '../components/Layout'
 import { LoadingScreen } from '../components/ui'
 import { useInventory } from '../context/InventoryContext'
-import type { Chemical } from '../lib/types'
+import { useToast } from '../context/ToastContext'
+import { api } from '../lib/api'
+import type { Chemical, ChemicalRequest } from '../lib/types'
 import { trimNumber } from '../lib/utils'
 
 function tally(rows: Chemical[], get: (c: Chemical) => string | null, limit = 10) {
@@ -62,6 +64,18 @@ function humanAmount(value: number, small: string, big: string): string {
 
 export default function AnalyticsPage() {
   const { chemicals, loading } = useInventory()
+  const toast = useToast()
+  const [requests, setRequests] = useState<ChemicalRequest[]>([])
+
+  useEffect(() => {
+    api.listChemicalRequests()
+      .then(setRequests)
+      .catch((err) => {
+        if (!/Could not load chemical requests/i.test(err instanceof Error ? err.message : String(err))) {
+          toast.error(err instanceof Error ? err.message : 'Could not load request analytics.')
+        }
+      })
+  }, [toast])
 
   const data = useMemo(() => {
     const inStock = chemicals.filter((c) => c.status === 'active' || c.status === 'low')
@@ -73,6 +87,19 @@ export default function AnalyticsPage() {
       const k = c.registration_date.slice(0, 7)
       byMonth.set(k, (byMonth.get(k) ?? 0) + 1)
     }
+
+    const requestNames = new Set(requests.map((request) => request.chemical_name_or_cas.toLowerCase().trim()).filter(Boolean))
+    const duplicateGroups = [...new Map(inStock.map((c) => [c.cas || c.name.toLowerCase(), inStock.filter((x) => (x.cas || x.name.toLowerCase()) === (c.cas || c.name.toLowerCase()))])).values()]
+      .filter((rows) => rows.length > 1)
+    const underuse = duplicateGroups
+      .map((rows) => ({
+        label: rows[0].cas || rows[0].name,
+        count: rows.reduce((sum, row) => sum + row.quantity, 0),
+        locations: new Set(rows.map((row) => row.location ?? 'Unassigned')).size,
+        requested: requestNames.has(rows[0].cas?.toLowerCase() ?? '') || requestNames.has(rows[0].name.toLowerCase()),
+      }))
+      .filter((group) => group.count >= 3 && group.locations >= 2 && !group.requested)
+      .slice(0, 8)
 
     return {
       inStock,
@@ -98,8 +125,9 @@ export default function AnalyticsPage() {
           }),
           value,
         })),
+      underuse,
     }
-  }, [chemicals])
+  }, [chemicals, requests])
 
   if (loading) return <LoadingScreen label="Crunching the numbers…" />
 
@@ -188,6 +216,26 @@ export default function AnalyticsPage() {
           Registrations per month
         </h2>
         <Timeline points={data.timeline} height={200} />
+      </section>
+
+      <section className="card mt-4 p-4">
+        <h2 className="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">
+          Usage / duplication intelligence
+        </h2>
+        {data.underuse.length ? (
+          <div className="grid gap-2 md:grid-cols-2">
+            {data.underuse.map((group) => (
+              <div key={group.label} className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">{group.label}</p>
+                <p className="mt-1 text-xs text-amber-800/80 dark:text-amber-200/75">
+                  {group.count} containers across {group.locations} locations, with no matching recent request.
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-ink-500">No obvious duplicated stockpile signals from current inventory and request data.</p>
+        )}
       </section>
     </>
   )

@@ -9,6 +9,8 @@ import {
   Filter,
   Folder,
   FolderOpen,
+  GitBranch,
+  History,
   Link2,
   Pencil,
   Plus,
@@ -33,10 +35,15 @@ import {
   ASSET_STATUSES,
   ASSET_TYPES,
   ASSET_VISIBILITIES,
+  ASSET_LINK_RELATIONSHIPS,
   type ResearchAsset,
   type ResearchAssetChemicalLink,
   type ResearchAssetInput,
+  type ResearchAssetLink,
+  type ResearchAssetRelationship,
   type ResearchAssetType,
+  type ResearchAssetVersion,
+  type ResearchAssetVersionInput,
 } from '../lib/types'
 import { cx, download, formatDate, todayISO } from '../lib/utils'
 
@@ -190,6 +197,8 @@ export default function ResearchAssetsPage() {
   const codeInputRef = useRef<HTMLInputElement>(null)
   const [assets, setAssets] = useState<ResearchAsset[]>([])
   const [links, setLinks] = useState<ResearchAssetChemicalLink[]>([])
+  const [versions, setVersions] = useState<ResearchAssetVersion[]>([])
+  const [assetLinks, setAssetLinks] = useState<ResearchAssetLink[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [type, setType] = useState<ResearchAssetType | 'all'>('all')
@@ -214,16 +223,27 @@ export default function ResearchAssetsPage() {
   const [selectedChemicalIds, setSelectedChemicalIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<ResearchAsset | null>(null)
+  const [versionForm, setVersionForm] = useState<ResearchAssetVersionInput | null>(null)
+  const [lineageForm, setLineageForm] = useState<{
+    source_asset_id: string
+    target_asset_id: string
+    relationship: ResearchAssetRelationship
+    notes: string | null
+  } | null>(null)
 
   async function load() {
     setLoading(true)
     try {
-      const [assetRows, linkRows] = await Promise.all([
+      const [assetRows, linkRows, versionRows, lineageRows] = await Promise.all([
         api.listResearchAssets(),
         api.listResearchAssetChemicalLinks(),
+        api.listResearchAssetVersions(),
+        api.listResearchAssetLinks(),
       ])
       setAssets(assetRows)
       setLinks(linkRows)
+      setVersions(versionRows)
+      setAssetLinks(lineageRows)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not load research assets.')
     } finally {
@@ -321,6 +341,27 @@ export default function ResearchAssetsPage() {
 
   const nonHpcShown = useMemo(() => shown.filter((row) => row.source !== 'hpc'), [shown])
 
+  const versionsByAsset = useMemo(() => {
+    const map = new Map<string, ResearchAssetVersion[]>()
+    for (const version of versions) {
+      map.set(version.research_asset_id, [...(map.get(version.research_asset_id) ?? []), version])
+    }
+    return map
+  }, [versions])
+
+  const lineageForDetail = useMemo(() => {
+    if (!detail) return { upstream: [] as ResearchAssetLink[], downstream: [] as ResearchAssetLink[] }
+    return {
+      upstream: assetLinks.filter((link) => link.target_asset_id === detail.id || (link.source_asset_id === detail.id && link.relationship === 'derived_from')),
+      downstream: assetLinks.filter((link) => link.source_asset_id === detail.id || (link.target_asset_id === detail.id && link.relationship === 'derived_from')),
+    }
+  }, [assetLinks, detail])
+
+  function assetTitle(id: string) {
+    const asset = assets.find((row) => row.id === id)
+    return asset ? `${asset.stable_id ?? 'PEARL-RA'} - ${asset.title}` : 'Unknown asset'
+  }
+
   function startAdd() {
     setEditing(null)
     setForm(blank(profile?.full_name ?? ''))
@@ -330,7 +371,7 @@ export default function ResearchAssetsPage() {
 
   function startEdit(asset: ResearchAsset) {
     setEditing(asset)
-    const { id: _id, created_at: _ca, updated_at: _ua, created_by: _cb, created_by_name: _cn, ...input } = asset
+    const { id: _id, stable_id: _sid, created_at: _ca, updated_at: _ua, created_by: _cb, created_by_name: _cn, ...input } = asset
     input.description = input.description ?? null
     input.size_bytes = input.size_bytes ?? null
     input.tags = input.tags ?? []
@@ -379,10 +420,81 @@ export default function ResearchAssetsPage() {
       await api.deleteResearchAsset(row, profile)
       setAssets((prev) => prev.filter((asset) => asset.id !== row.id))
       setLinks((prev) => prev.filter((link) => link.research_asset_id !== row.id))
+      setVersions((prev) => prev.filter((version) => version.research_asset_id !== row.id))
+      setAssetLinks((prev) => prev.filter((link) => link.source_asset_id !== row.id && link.target_asset_id !== row.id))
       setConfirmDelete(null)
       toast.success('Research asset deleted.')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not delete research asset.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function addVersion() {
+    if (!profile || !versionForm) return
+    if (!versionForm.version_number.trim()) return toast.error('Give this version a number or label.')
+    setBusy(true)
+    try {
+      const row = await api.createResearchAssetVersion({
+        ...versionForm,
+        version_number: versionForm.version_number.trim(),
+        checksum: versionForm.checksum?.trim() || null,
+        external_path: versionForm.external_path?.trim() || null,
+        notes: versionForm.notes?.trim() || null,
+      }, profile)
+      setVersions((prev) => [row, ...prev])
+      setVersionForm(null)
+      toast.success('Version added.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not add version.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeVersion(row: ResearchAssetVersion) {
+    if (!profile) return
+    setBusy(true)
+    try {
+      await api.deleteResearchAssetVersion(row, profile)
+      setVersions((prev) => prev.filter((version) => version.id !== row.id))
+      toast.success('Version removed.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove version.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function addLineage() {
+    if (!profile || !lineageForm) return
+    if (lineageForm.source_asset_id === lineageForm.target_asset_id) return toast.error('Pick two different assets.')
+    setBusy(true)
+    try {
+      const row = await api.createResearchAssetLink({
+        ...lineageForm,
+        notes: lineageForm.notes?.trim() || null,
+      }, profile)
+      setAssetLinks((prev) => [row, ...prev])
+      setLineageForm(null)
+      toast.success('Lineage link added.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not add lineage link.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeLineage(row: ResearchAssetLink) {
+    if (!profile) return
+    setBusy(true)
+    try {
+      await api.deleteResearchAssetLink(row, profile)
+      setAssetLinks((prev) => prev.filter((link) => link.id !== row.id))
+      toast.success('Lineage link removed.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove lineage link.')
     } finally {
       setBusy(false)
     }
@@ -623,6 +735,11 @@ export default function ResearchAssetsPage() {
                       <span className="badge bg-pearl-50 text-pearl-700 ring-pearl-600/20 dark:bg-pearl-500/10 dark:text-pearl-300">
                         {asset.type}
                       </span>
+                      {asset.stable_id && (
+                        <span className="badge bg-violet-50 font-mono text-violet-700 ring-violet-600/20 dark:bg-violet-500/10 dark:text-violet-300">
+                          {asset.stable_id}
+                        </span>
+                      )}
                       <span className="badge bg-ink-100 text-ink-600 ring-ink-500/20 dark:bg-ink-800 dark:text-ink-300">
                         {asset.status}
                       </span>
@@ -831,6 +948,7 @@ export default function ResearchAssetsPage() {
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
               <span className="badge bg-pearl-50 text-pearl-700 ring-pearl-600/20 dark:bg-pearl-500/10 dark:text-pearl-300">{detail.type}</span>
+              {detail.stable_id && <span className="badge bg-violet-50 font-mono text-violet-700 ring-violet-600/20 dark:bg-violet-500/10 dark:text-violet-300">{detail.stable_id}</span>}
               <span className="badge bg-ink-100 text-ink-600 ring-ink-500/20 dark:bg-ink-800 dark:text-ink-300">{detail.status}</span>
               {detail.source && <span className="badge bg-ink-100 text-ink-600 ring-ink-500/20 dark:bg-ink-800 dark:text-ink-300">{detail.source}</span>}
               <span className="badge bg-amber-50 text-amber-700 ring-ink-500/20 dark:bg-amber-500/10 dark:text-amber-200">
@@ -843,6 +961,7 @@ export default function ResearchAssetsPage() {
               <p className="mt-2 text-sm text-ink-700 dark:text-ink-300">{detail.description || detail.notes || 'No description yet.'}</p>
               <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                 <Meta label="Project" value={detail.project} />
+                <Meta label="Persistent ID" value={detail.stable_id} />
                 <Meta label="Owner" value={detail.owner} />
                 <Meta label="Software" value={detail.software} />
                 <Meta label="Method" value={detail.method} />
@@ -852,6 +971,133 @@ export default function ResearchAssetsPage() {
                 <Meta label="Version" value={detail.version} />
                 <Meta label="Last verified" value={detail.last_verified_at ? formatDate(detail.last_verified_at) : null} />
               </dl>
+            </section>
+
+            <section className="card p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-400">
+                  <History className="h-3.5 w-3.5" /> Version history
+                </h3>
+                {canEdit && (
+                  <button
+                    className="btn-secondary py-1.5 text-xs"
+                    onClick={() => setVersionForm({
+                      research_asset_id: detail.id,
+                      version_number: detail.version || `v${(versionsByAsset.get(detail.id)?.length ?? 0) + 1}`,
+                      checksum: detail.checksum,
+                      size_bytes: detail.size_bytes,
+                      size_label: detail.size_label,
+                      external_path: detail.external_path || detail.output_link || detail.storage_link,
+                      notes: null,
+                    })}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add version
+                  </button>
+                )}
+              </div>
+              {versionForm?.research_asset_id === detail.id && (
+                <div className="mb-3 grid gap-2 rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <input className="input" value={versionForm.version_number} onChange={(e) => setVersionForm((form) => form && ({ ...form, version_number: e.target.value }))} placeholder="v1, 2026-07, checkpoint-04" />
+                    <input className="input" value={versionForm.checksum ?? ''} onChange={(e) => setVersionForm((form) => form && ({ ...form, checksum: e.target.value || null }))} placeholder="checksum" />
+                    <input className="input" value={versionForm.size_label ?? ''} onChange={(e) => setVersionForm((form) => form && ({ ...form, size_label: e.target.value || null }))} placeholder="size label" />
+                  </div>
+                  <input className="input" value={versionForm.external_path ?? ''} onChange={(e) => setVersionForm((form) => form && ({ ...form, external_path: e.target.value || null }))} placeholder="external path or output pointer" />
+                  <textarea className="input min-h-[64px]" value={versionForm.notes ?? ''} onChange={(e) => setVersionForm((form) => form && ({ ...form, notes: e.target.value || null }))} placeholder="Notes for this version" />
+                  <div className="flex justify-end gap-2">
+                    <button className="btn-secondary py-1.5 text-xs" onClick={() => setVersionForm(null)}>Cancel</button>
+                    <button className="btn-primary py-1.5 text-xs" onClick={() => void addVersion()} disabled={busy}>{busy ? <Spinner /> : <Plus className="h-3.5 w-3.5" />} Save version</button>
+                  </div>
+                </div>
+              )}
+              {(versionsByAsset.get(detail.id)?.length ?? 0) === 0 ? (
+                <p className="text-sm text-ink-500">No versions recorded yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {versionsByAsset.get(detail.id)?.map((version) => (
+                    <div key={version.id} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{version.version_number}</p>
+                          <p className="mt-1 text-xs text-ink-500">{formatDate(version.created_at)}{version.size_label || formatBytes(version.size_bytes) ? ` - ${version.size_label ?? formatBytes(version.size_bytes)}` : ''}</p>
+                          {version.external_path && <p className="mt-1 break-all font-mono text-xs text-ink-500">{version.external_path}</p>}
+                          {version.notes && <p className="mt-2 text-sm text-ink-700 dark:text-ink-300">{version.notes}</p>}
+                        </div>
+                        {canEdit && (
+                          <button className="btn-ghost py-1.5 text-xs text-rose-600" onClick={() => void removeVersion(version)} title="Remove this PEARL version metadata only">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="card p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-400">
+                  <GitBranch className="h-3.5 w-3.5" /> Lineage
+                </h3>
+                {canEdit && assets.length > 1 && (
+                  <button
+                    className="btn-secondary py-1.5 text-xs"
+                    onClick={() => setLineageForm({
+                      source_asset_id: detail.id,
+                      target_asset_id: assets.find((asset) => asset.id !== detail.id)?.id ?? detail.id,
+                      relationship: 'derived_from',
+                      notes: null,
+                    })}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Link asset
+                  </button>
+                )}
+              </div>
+              {lineageForm && (lineageForm.source_asset_id === detail.id || lineageForm.target_asset_id === detail.id) && (
+                <div className="mb-3 grid gap-2 rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <select className="input" value={lineageForm.relationship} onChange={(e) => setLineageForm((form) => form && ({ ...form, relationship: e.target.value as ResearchAssetRelationship }))}>
+                      {ASSET_LINK_RELATIONSHIPS.map((relationship) => <option key={relationship} value={relationship}>{relationship.replace('_', ' ')}</option>)}
+                    </select>
+                    <select className="input" value={lineageForm.source_asset_id} onChange={(e) => setLineageForm((form) => form && ({ ...form, source_asset_id: e.target.value }))}>
+                      {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.stable_id ?? asset.title} - {asset.title}</option>)}
+                    </select>
+                    <select className="input" value={lineageForm.target_asset_id} onChange={(e) => setLineageForm((form) => form && ({ ...form, target_asset_id: e.target.value }))}>
+                      {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.stable_id ?? asset.title} - {asset.title}</option>)}
+                    </select>
+                  </div>
+                  <textarea className="input min-h-[64px]" value={lineageForm.notes ?? ''} onChange={(e) => setLineageForm((form) => form && ({ ...form, notes: e.target.value || null }))} placeholder="Why are these connected?" />
+                  <div className="flex justify-end gap-2">
+                    <button className="btn-secondary py-1.5 text-xs" onClick={() => setLineageForm(null)}>Cancel</button>
+                    <button className="btn-primary py-1.5 text-xs" onClick={() => void addLineage()} disabled={busy}>{busy ? <Spinner /> : <Plus className="h-3.5 w-3.5" />} Save link</button>
+                  </div>
+                </div>
+              )}
+              {lineageForDetail.upstream.length + lineageForDetail.downstream.length === 0 ? (
+                <p className="text-sm text-ink-500">No upstream or downstream assets recorded yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {[...lineageForDetail.upstream, ...lineageForDetail.downstream].map((link) => (
+                    <div key={link.id} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 text-sm">
+                          <p className="font-semibold text-ink-900 dark:text-ink-50">{link.relationship.replace('_', ' ')}</p>
+                          <p className="mt-1 break-words text-ink-600 dark:text-ink-300">
+                            {assetTitle(link.source_asset_id)} → {assetTitle(link.target_asset_id)}
+                          </p>
+                          {link.notes && <p className="mt-2 text-ink-500">{link.notes}</p>}
+                        </div>
+                        {canEdit && (
+                          <button className="btn-ghost py-1.5 text-xs text-rose-600" onClick={() => void removeLineage(link)} title="Remove this PEARL lineage metadata only">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             {(linkedNames.get(detail.id)?.length ?? 0) > 0 && (

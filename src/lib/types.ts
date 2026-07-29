@@ -148,6 +148,7 @@ export type ResearchAssetVisibility = (typeof ASSET_VISIBILITIES)[number]
 
 export interface ResearchAsset {
   id: string
+  stable_id: string | null
   type: ResearchAssetType
   title: string
   description: string | null
@@ -186,7 +187,7 @@ export interface ResearchAsset {
 
 export type ResearchAssetInput = Omit<
   ResearchAsset,
-  'id' | 'created_at' | 'updated_at' | 'created_by' | 'created_by_name'
+  'id' | 'stable_id' | 'created_at' | 'updated_at' | 'created_by' | 'created_by_name'
 >
 
 export interface ResearchAssetChemicalLink {
@@ -194,6 +195,69 @@ export interface ResearchAssetChemicalLink {
   chemical_id: string
   chemical_name?: string | null
 }
+
+export interface ResearchAssetVersion {
+  id: string
+  research_asset_id: string
+  version_number: string
+  checksum: string | null
+  size_bytes: number | null
+  size_label: string | null
+  external_path: string | null
+  created_at: string
+  notes: string | null
+  created_by: string | null
+  created_by_name: string | null
+}
+
+export type ResearchAssetVersionInput = Omit<
+  ResearchAssetVersion,
+  'id' | 'created_at' | 'created_by' | 'created_by_name'
+>
+
+export const ASSET_LINK_RELATIONSHIPS = ['derived_from', 'input_to', 'related_to'] as const
+export type ResearchAssetRelationship = (typeof ASSET_LINK_RELATIONSHIPS)[number]
+
+export interface ResearchAssetLink {
+  id: string
+  source_asset_id: string
+  target_asset_id: string
+  relationship: ResearchAssetRelationship
+  created_at: string
+  created_by: string | null
+  created_by_name: string | null
+  notes: string | null
+}
+
+export type ResearchAssetLinkInput = Omit<
+  ResearchAssetLink,
+  'id' | 'created_at' | 'created_by' | 'created_by_name'
+>
+
+export const CHEMICAL_REQUEST_STATUSES = ['pending', 'approved', 'declined', 'received'] as const
+export type ChemicalRequestStatus = (typeof CHEMICAL_REQUEST_STATUSES)[number]
+
+export interface ChemicalRequest {
+  id: string
+  requested_by: string | null
+  requested_by_name: string | null
+  chemical_name_or_cas: string
+  quantity: string | null
+  supplier: string | null
+  justification_project: string | null
+  status: ChemicalRequestStatus
+  requested_at: string
+  decided_by: string | null
+  decided_by_name: string | null
+  decided_at: string | null
+  received_container_id: string | null
+  notes: string | null
+}
+
+export type ChemicalRequestInput = Pick<
+  ChemicalRequest,
+  'chemical_name_or_cas' | 'quantity' | 'supplier' | 'justification_project' | 'notes'
+>
 
 export interface ActivityEntry {
   id: string

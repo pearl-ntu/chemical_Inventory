@@ -5,7 +5,7 @@ import { BarList, Timeline } from '../components/charts'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen } from '../components/ui'
 import { api } from '../lib/api'
-import type { ResearchAsset, ResearchAssetChemicalLink } from '../lib/types'
+import type { ResearchAsset, ResearchAssetChemicalLink, ResearchAssetVersion } from '../lib/types'
 import { cx, formatDate } from '../lib/utils'
 
 function tally(rows: ResearchAsset[], get: (asset: ResearchAsset) => string | null, limit = 10) {
@@ -68,14 +68,16 @@ export default function ComputationalAnalyticsPage() {
   const navigate = useNavigate()
   const [assets, setAssets] = useState<ResearchAsset[]>([])
   const [links, setLinks] = useState<ResearchAssetChemicalLink[]>([])
+  const [versions, setVersions] = useState<ResearchAssetVersion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([api.listResearchAssets(), api.listResearchAssetChemicalLinks()])
-      .then(([assetRows, linkRows]) => {
+    Promise.all([api.listResearchAssets(), api.listResearchAssetChemicalLinks(), api.listResearchAssetVersions()])
+      .then(([assetRows, linkRows, versionRows]) => {
         setAssets(assetRows)
         setLinks(linkRows)
+        setVersions(versionRows)
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false))
@@ -103,14 +105,18 @@ export default function ComputationalAnalyticsPage() {
       .sort((a, b) => b.rows.length - a.rows.length)
 
     const linkedAssetIds = new Set(links.map((link) => link.research_asset_id))
+    const versionedAssetIds = new Set(versions.map((version) => version.research_asset_id))
     const withDescription = assets.filter((asset) => asset.description || asset.notes).length
     const withTags = assets.filter((asset) => asset.tags?.length > 0).length
     const withChemical = assets.filter((asset) => asset.related_chemical_id || linkedAssetIds.has(asset.id)).length
+    const withVersionHistory = assets.filter((asset) => versionedAssetIds.has(asset.id)).length
+    const recentlyVerified = assets.filter((asset) => daysSince(asset.last_verified_at) <= 90).length
     const stale = assets.filter((asset) => daysSince(asset.last_verified_at) > 90)
     const missingDescription = assets.filter((asset) => !(asset.description || asset.notes))
     const missingTags = assets.filter((asset) => !asset.tags || asset.tags.length === 0)
     const missingLinks = assets.filter((asset) => !asset.storage_link && !asset.repo_link && !asset.output_link)
-    const cleanup = [...new Map([...stale, ...missingDescription, ...missingTags, ...missingLinks].map((asset) => [asset.id, asset])).values()]
+    const missingVersions = assets.filter((asset) => !versionedAssetIds.has(asset.id))
+    const cleanup = [...new Map([...stale, ...missingDescription, ...missingTags, ...missingLinks, ...missingVersions].map((asset) => [asset.id, asset])).values()]
 
     return {
       datasets,
@@ -124,15 +130,18 @@ export default function ComputationalAnalyticsPage() {
       missingDescription,
       missingTags,
       missingLinks,
+      versionedAssetIds,
       cleanup,
       descriptionPct: pct(withDescription, assets.length),
       tagsPct: pct(withTags, assets.length),
       chemicalPct: pct(withChemical, assets.length),
+      versionPct: pct(withVersionHistory, assets.length),
+      verifiedPct: pct(recentlyVerified, assets.length),
       timeline: [...byMonth.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([label, value]) => ({ label: monthLabel(label), value })),
     }
-  }, [assets, links])
+  }, [assets, links, versions])
 
   if (loading) return <LoadingScreen label="Building computational dashboard..." />
 
@@ -189,6 +198,8 @@ export default function ComputationalAnalyticsPage() {
                 <ProgressRow label="Description" pct={data.descriptionPct} />
                 <ProgressRow label="Tags" pct={data.tagsPct} />
                 <ProgressRow label="Linked chemical" pct={data.chemicalPct} />
+                <ProgressRow label="Version history" pct={data.versionPct} />
+                <ProgressRow label="Verified within 90 days" pct={data.verifiedPct} />
               </div>
             </section>
           </div>
@@ -232,7 +243,7 @@ export default function ComputationalAnalyticsPage() {
                         <tr key={asset.id} className="text-sm">
                           <td className="max-w-[16rem] truncate py-2 pr-3 font-medium text-ink-900 dark:text-ink-50">{asset.title}</td>
                           <td className="py-2 pr-3 text-xs text-ink-500">{asset.owner ?? '-'}</td>
-                          <td className="py-2 pr-3 text-xs text-ink-500">{cleanupReason(asset)}</td>
+                          <td className="py-2 pr-3 text-xs text-ink-500">{cleanupReason(asset, data.versionedAssetIds)}</td>
                           <td className="py-2 text-xs text-ink-500">{asset.last_verified_at ? formatDate(asset.last_verified_at) : 'Never'}</td>
                         </tr>
                       ))}
@@ -314,10 +325,11 @@ function CleanState({ text }: { text: string }) {
   )
 }
 
-function cleanupReason(asset: ResearchAsset) {
+function cleanupReason(asset: ResearchAsset, versionedAssetIds: Set<string>) {
   if (daysSince(asset.last_verified_at) > 90) return 'Needs verification'
   if (!(asset.description || asset.notes)) return 'No description'
   if (!asset.tags || asset.tags.length === 0) return 'No tags'
+  if (!versionedAssetIds.has(asset.id)) return 'No version history'
   if (!asset.storage_link && !asset.repo_link && !asset.output_link) return 'No link'
   return 'Review'
 }
