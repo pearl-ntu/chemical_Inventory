@@ -50,19 +50,10 @@ import {
 const PAGE_SIZE = 25
 
 function ChemicalThumbnail({ chemical }: { chemical: Chemical }) {
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [imageOk, setImageOk] = useState(true)
+  const term = chemical.cas?.trim() || chemical.name?.trim() || ''
 
-  useEffect(() => {
-    let live = true
-    setImageUrl(null)
-    if (chemical.structure_molfile || (!chemical.cas && !chemical.name)) return
-    void pubchem.lookup(chemical.cas, chemical.name).then((info) => {
-      if (live) setImageUrl(info?.imageUrl ?? null)
-    })
-    return () => {
-      live = false
-    }
-  }, [chemical.cas, chemical.name, chemical.structure_molfile])
+  useEffect(() => setImageOk(true), [term])
 
   return (
     <div className="viz-root flex h-10 w-14 items-center justify-center overflow-hidden rounded bg-white ring-1 ring-ink-200 dark:ring-ink-700">
@@ -70,12 +61,13 @@ function ChemicalThumbnail({ chemical }: { chemical: Chemical }) {
         <Suspense fallback={null}>
           <LazyMolfileSvgRenderer molfile={chemical.structure_molfile} width={56} height={40} />
         </Suspense>
-      ) : imageUrl ? (
+      ) : term && imageOk ? (
         <img
-          src={imageUrl}
+          src={pubchem.structureImageUrlForTerm(term, 'small')}
           alt=""
           className="max-h-10 max-w-14 object-contain dark:brightness-95 dark:invert-[.92] dark:hue-rotate-180"
           loading="lazy"
+          onError={() => setImageOk(false)}
         />
       ) : (
         <div className="h-full w-full bg-ink-50 dark:bg-ink-800/50" />

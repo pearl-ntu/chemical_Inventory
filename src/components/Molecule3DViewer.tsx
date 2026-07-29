@@ -36,7 +36,13 @@ function load3Dmol() {
   return loader
 }
 
-export function Molecule3DViewer({ sdf }: { sdf: string | null }) {
+export function Molecule3DViewer({
+  sdf,
+  coordinates = '3d',
+}: {
+  sdf: string | null
+  coordinates?: '3d' | '2d'
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const [style, setStyle] = useState<StyleMode>('stick')
   const [error, setError] = useState<string | null>(null)
@@ -85,6 +91,11 @@ export function Molecule3DViewer({ sdf }: { sdf: string | null }) {
       />
       {error && <p className="text-xs text-rose-500">{error}</p>}
       {!ready && !error && <div className="flex justify-center"><Spinner className="h-4 w-4 text-ink-300" /></div>}
+      {coordinates === '2d' && !error && (
+        <p className="text-center text-[11px] leading-tight text-ink-400">
+          True PubChem 3D conformer not available; showing 2D coordinates in the viewer.
+        </p>
+      )}
     </div>
   )
 }

@@ -42,6 +42,10 @@ export function structureImageUrl(cid: number, size: 'small' | 'large' = 'large'
   return `${BASE}/compound/cid/${cid}/PNG?image_size=${size}`
 }
 
+export function structureImageUrlForTerm(term: string, size: 'small' | 'large' = 'large'): string {
+  return `${BASE}/compound/name/${encodeURIComponent(term)}/PNG?image_size=${size}`
+}
+
 export function pubchemPageUrl(cid: number): string {
   return `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`
 }
@@ -63,6 +67,14 @@ export async function fetch3dSdf(cid: number): Promise<string | null> {
     if (!conformers.ok) return null
     const conformerId = (await conformers.text()).split(/\s+/).find(Boolean)
     return conformerId ? fetchSdf(`${BASE}/conformers/${encodeURIComponent(conformerId)}/SDF`) : null
+  } catch {
+    return null
+  }
+}
+
+export async function fetch2dSdf(cid: number): Promise<string | null> {
+  try {
+    return fetchSdf(`${BASE}/compound/cid/${cid}/record/SDF`)
   } catch {
     return null
   }

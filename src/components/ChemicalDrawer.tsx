@@ -66,6 +66,8 @@ export function ChemicalDrawer({
   const [qr, setQr] = useState<string | null>(null)
   const [info, setInfo] = useState<pubchem.PubChemInfo | null>(null)
   const [sdf3d, setSdf3d] = useState<string | null>(null)
+  const [sdf2d, setSdf2d] = useState<string | null>(null)
+  const [pubchemImageOk, setPubchemImageOk] = useState(true)
   const [structureView, setStructureView] = useState<'2d' | '3d'>('2d')
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [relatedAssets, setRelatedAssets] = useState<ResearchAsset[]>([])
@@ -76,6 +78,8 @@ export function ChemicalDrawer({
     setQr(null)
     setInfo(null)
     setSdf3d(null)
+    setSdf2d(null)
+    setPubchemImageOk(true)
     setStructureView('2d')
     setPhotoUrl(null)
     setRelatedAssets([])
@@ -86,7 +90,10 @@ export function ChemicalDrawer({
     void pubchem.lookup(chemical.cas, chemical.name).then((res) => {
       if (!live) return
       setInfo(res)
-      if (res?.cid) void pubchem.fetch3dSdf(res.cid).then((sdf) => live && setSdf3d(sdf))
+      if (res?.cid) {
+        void pubchem.fetch3dSdf(res.cid).then((sdf) => live && setSdf3d(sdf))
+        void pubchem.fetch2dSdf(res.cid).then((sdf) => live && setSdf2d(sdf))
+      }
     })
     void api
       .listResearchAssetsForChemical(chemical.id)
@@ -110,6 +117,9 @@ export function ChemicalDrawer({
 
   const c = chemical
   const canDelete = isAdmin || c.created_by === profile?.id
+  const pubchemTerm = c.cas?.trim() || c.name?.trim() || ''
+  const fallback2dImage = info?.imageUrl ?? (pubchemTerm ? pubchem.structureImageUrlForTerm(pubchemTerm, 'large') : null)
+  const viewerSdf = sdf3d ?? sdf2d ?? c.structure_molfile
 
   async function copyCode() {
     try {
@@ -196,17 +206,18 @@ export function ChemicalDrawer({
               </div>
               <div className="flex flex-1 items-center justify-center">
                 {structureView === '3d' ? (
-                  <Molecule3DViewer sdf={sdf3d} />
+                  <Molecule3DViewer sdf={viewerSdf} coordinates={sdf3d ? '3d' : '2d'} />
                 ) : c.structure_molfile ? (
                   <Suspense fallback={<Spinner className="h-5 w-5 text-ink-300" />}>
                     <LazyMolfileSvgRenderer molfile={c.structure_molfile} width={220} height={150} />
                   </Suspense>
-                ) : info ? (
+                ) : fallback2dImage && pubchemImageOk ? (
                   <img
-                    src={info.imageUrl}
+                    src={fallback2dImage}
                     alt={`Structure of ${c.name}`}
                     className="max-h-36 w-auto object-contain dark:brightness-95 dark:invert-[.92] dark:hue-rotate-180"
                     loading="lazy"
+                    onError={() => setPubchemImageOk(false)}
                   />
                 ) : (
                   <p className="px-3 text-center text-xs text-ink-400">

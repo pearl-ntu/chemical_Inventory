@@ -55,6 +55,7 @@ export function StructureEditorDialog({
   const [resetKey, setResetKey] = useState(0)
   const [search, setSearch] = useState<PubChemSearchState>({ status: 'idle' })
   const [sdf3d, setSdf3d] = useState<string | null>(null)
+  const [sdf2d, setSdf2d] = useState<string | null>(null)
 
   function handleConfirm() {
     const change = latestChange.current
@@ -77,9 +78,11 @@ export function StructureEditorDialog({
       const info = await pubchem.lookupBySmiles(smiles)
       setSearch(info ? { status: 'found', info } : { status: 'not-found' })
       setSdf3d(info?.cid ? await pubchem.fetch3dSdf(info.cid) : null)
+      setSdf2d(info?.cid ? await pubchem.fetch2dSdf(info.cid) : null)
     } catch {
       setSearch({ status: 'not-found' })
       setSdf3d(null)
+      setSdf2d(null)
     }
   }
 
@@ -100,6 +103,7 @@ export function StructureEditorDialog({
               setHasContent(false)
               setSearch({ status: 'idle' })
               setSdf3d(null)
+              setSdf2d(null)
               setResetKey((k) => k + 1)
             }}
           >
@@ -138,6 +142,7 @@ export function StructureEditorDialog({
               // A new edit invalidates whatever the last search found.
               setSearch({ status: 'idle' })
               setSdf3d(null)
+              setSdf2d(null)
             }}
           />
         </div>
@@ -179,7 +184,7 @@ export function StructureEditorDialog({
             </div>
             <div className="rounded-lg border border-ink-200 bg-white p-3 dark:border-ink-700">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">3D PubChem preview</p>
-              <Molecule3DViewer sdf={sdf3d} />
+              <Molecule3DViewer sdf={sdf3d ?? sdf2d} coordinates={sdf3d ? '3d' : '2d'} />
             </div>
           </div>
         )}
