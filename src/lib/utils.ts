@@ -129,7 +129,8 @@ export function locationGroup(location: string | null): string {
   const l = (location ?? '').toLowerCase()
   if (l.startsWith('fridge') || l.startsWith('freezer')) return 'Cold storage'
   if (l.startsWith('cabinet')) return 'Cabinets'
-  if (l.startsWith('fs')) return 'Flammables store'
+  if (l.startsWith('fs') || l.startsWith('flammable storage')) return 'Flammables store'
+  if (l.startsWith('fume hood')) return 'Fume hoods'
   if (!l) return 'Unassigned'
   return 'Other'
 }

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, MapPin, Refrigerator, ShieldAlert, Warehouse } from 'lucide-react'
+import { ChevronDown, FlaskConical, MapPin, Refrigerator, ShieldAlert, Warehouse } from 'lucide-react'
 import { ChemicalDrawer } from '../components/ChemicalDrawer'
 import { HazardBadges } from '../components/HazardBadges'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen, SearchInput } from '../components/ui'
 import { useInventory } from '../context/InventoryContext'
 import { INCOMPATIBLE_PAIRS } from '../lib/hazardHints'
+import { LAB_LOCATIONS } from '../lib/labLocations'
 import { STATUS_LABEL, type Chemical } from '../lib/types'
 import { cx, formatSize, locationGroup, matchesQuery, statusTone } from '../lib/utils'
 
@@ -13,6 +14,7 @@ const GROUP_ICON: Record<string, typeof MapPin> = {
   'Cold storage': Refrigerator,
   Cabinets: Warehouse,
   'Flammables store': ShieldAlert,
+  'Fume hoods': FlaskConical,
 }
 
 export default function LocationsPage() {
@@ -27,6 +29,9 @@ export default function LocationsPage() {
   const groups = useMemo(() => {
     const rows = chemicals.filter((c) => c.status !== 'empty' && c.status !== 'disposed')
     const byLocation = new Map<string, Chemical[]>()
+    for (const location of LAB_LOCATIONS) {
+      byLocation.set(location, [])
+    }
     for (const c of rows) {
       const key = c.location ?? 'Unassigned'
       byLocation.set(key, [...(byLocation.get(key) ?? []), c])
@@ -42,7 +47,7 @@ export default function LocationsPage() {
       list.sort((a, b) => a.location.localeCompare(b.location, 'en', { numeric: true }))
     }
 
-    const order = ['Cold storage', 'Cabinets', 'Flammables store', 'Other', 'Unassigned']
+    const order = ['Cold storage', 'Cabinets', 'Flammables store', 'Fume hoods', 'Other', 'Unassigned']
     const rank = (name: string) => {
       const i = order.indexOf(name)
       return i === -1 ? order.length : i
@@ -78,17 +83,21 @@ export default function LocationsPage() {
           {groups.map(([groupName, locations]) => {
             const Icon = GROUP_ICON[groupName] ?? MapPin
             const total = locations.reduce((s, l) => s + l.items.length, 0)
+            const visibleLocations = q
+              ? locations.filter(({ items }) => items.some((c) => matchesQuery(c, q)))
+              : locations
+            if (visibleLocations.length === 0) return null
             return (
               <section key={groupName}>
                 <h2 className="mb-2.5 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400">
                   <Icon className="h-4 w-4" /> {groupName}
                   <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-500 dark:bg-ink-800">
-                    {total}
+                    {visibleLocations.length} locations · {total} containers
                   </span>
                 </h2>
 
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {locations.map(({ location, items }) => {
+                  {visibleLocations.map(({ location, items }) => {
                     const isOpen = open.has(location)
                     const matches = q ? items.filter((c) => matchesQuery(c, q)) : items
                     const warnings = segregationWarnings(items)
@@ -127,6 +136,11 @@ export default function LocationsPage() {
                         )}
 
                         <ul className="mt-3 flex-1 space-y-1">
+                          {shown.length === 0 && (
+                            <li className="rounded-lg border border-dashed border-ink-200 px-3 py-4 text-center text-xs text-ink-400 dark:border-ink-800">
+                              No active containers recorded here.
+                            </li>
+                          )}
                           {shown.map((c) => (
                             <li key={c.id}>
                               <button
