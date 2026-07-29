@@ -59,5 +59,11 @@ export function useLabLocations(chemicals: Chemical[] = []) {
     setCustom((prev) => prev.filter((item) => item.id !== row.id))
   }
 
-  return { custom, locations, subLocations, loading, reload, add, remove }
+  async function update(row: LabLocation, patch: Partial<LabLocation>) {
+    const updated = await api.updateLabLocation(row, patch)
+    setCustom((prev) => prev.map((item) => (item.id === row.id ? updated : item)))
+    return updated
+  }
+
+  return { custom, locations, subLocations, loading, reload, add, remove, update }
 }

@@ -462,6 +462,10 @@ export const api = {
         id: crypto.randomUUID(),
         name: clean,
         kind,
+        capacity: null,
+        notes: null,
+        last_inspected_at: null,
+        inspected_by: null,
         created_by: actor.id,
         created_at: new Date().toISOString(),
       }
@@ -497,6 +501,23 @@ export const api = {
     const { error } = await requireSupabase().from('lab_locations').delete().eq('id', row.id)
     if (missingTable(error)) return
     if (error) fail('Could not remove this lab location', error)
+  },
+
+  async updateLabLocation(row: LabLocation, patch: Partial<LabLocation>): Promise<LabLocation> {
+    if (!IS_CLOUD) {
+      const updated = { ...row, ...patch }
+      saveLocalLabLocations(localLabLocations().map((item) => (item.id === row.id ? updated : item)))
+      return updated
+    }
+    const { data, error } = await requireSupabase()
+      .from('lab_locations')
+      .update(patch)
+      .eq('id', row.id)
+      .select()
+      .single()
+    if (missingTable(error)) throw new ApiError('Run supabase/upgrade_lab_locations.sql first.')
+    if (error) fail('Could not update this lab location', error)
+    return data as LabLocation
   },
 
   async listChemicals(): Promise<Chemical[]> {
@@ -547,9 +568,15 @@ export const api = {
     actor: Profile,
     note?: string,
   ): Promise<Chemical> {
+    const action: ActivityAction =
+      patch.status === 'disposed'
+        ? 'disposed'
+        : 'location' in patch || 'sub_location' in patch
+          ? 'moved'
+          : 'updated'
     if (!IS_CLOUD) {
       const row = localDb.updateChemical(id, patch)
-      logLocal(row, 'updated', note ?? `Updated ${row.name}`, actor)
+      logLocal(row, action, note ?? `Updated ${row.name}`, actor)
       return row
     }
     const { data, error } = await requireSupabase()
@@ -560,7 +587,7 @@ export const api = {
       .single()
     if (error) fail('Could not save the changes', error)
     const row = data as Chemical
-    await api.log(row, 'updated', note ?? `Updated ${row.name}`, actor)
+    await api.log(row, action, note ?? `Updated ${row.name}`, actor)
     return row
   },
 

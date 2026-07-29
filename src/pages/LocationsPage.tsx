@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, FlaskConical, MapPin, Plus, Refrigerator, ShieldAlert, Trash2, Warehouse } from 'lucide-react'
+import { Check, ChevronDown, FlaskConical, MapPin, Plus, Refrigerator, ShieldAlert, Trash2, Warehouse } from 'lucide-react'
 import { ChemicalDrawer } from '../components/ChemicalDrawer'
 import { HazardBadges } from '../components/HazardBadges'
 import { PageHeader } from '../components/Layout'
@@ -10,7 +10,7 @@ import { useToast } from '../context/ToastContext'
 import { INCOMPATIBLE_PAIRS } from '../lib/hazardHints'
 import { STATUS_LABEL, type Chemical, type LabLocation } from '../lib/types'
 import { useLabLocations } from '../lib/useLabLocations'
-import { cx, formatSize, locationGroup, matchesQuery, statusTone } from '../lib/utils'
+import { cx, formatDate, formatSize, locationGroup, matchesQuery, statusTone } from '../lib/utils'
 
 const GROUP_ICON: Record<string, typeof MapPin> = {
   'Cold storage': Refrigerator,
@@ -26,6 +26,7 @@ export default function LocationsPage() {
   const labLocations = useLabLocations(chemicals)
   const [q, setQ] = useState('')
   const [newLocation, setNewLocation] = useState('')
+  const [newCapacity, setNewCapacity] = useState('')
   const [newKind, setNewKind] = useState<LabLocation['kind']>('location')
   const [savingLocation, setSavingLocation] = useState(false)
   const [open, setOpen] = useState<Set<string>>(new Set())
@@ -68,7 +69,11 @@ export default function LocationsPage() {
     setSavingLocation(true)
     try {
       const row = await labLocations.add(newLocation, newKind, profile)
+      if (newCapacity.trim()) {
+        await labLocations.update(row, { capacity: Number(newCapacity) || null })
+      }
       setNewLocation('')
+      setNewCapacity('')
       toast.success(`Added ${row.name}.`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not add that location.')
@@ -84,6 +89,22 @@ export default function LocationsPage() {
       toast.success(`Removed ${row.name}.`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not remove that location.')
+    } finally {
+      setSavingLocation(false)
+    }
+  }
+
+  async function inspectLocation(row: LabLocation) {
+    if (!profile) return
+    setSavingLocation(true)
+    try {
+      await labLocations.update(row, {
+        last_inspected_at: new Date().toISOString(),
+        inspected_by: profile.full_name,
+      })
+      toast.success(`${row.name} marked inspected.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update inspection status.')
     } finally {
       setSavingLocation(false)
     }
@@ -118,7 +139,7 @@ export default function LocationsPage() {
               PEARL includes the lab map by default. Add extra temporary shelves, boxes, benches, or new cabinets here.
             </p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-[160px_minmax(220px,1fr)_auto] lg:min-w-[560px]">
+          <div className="grid gap-2 sm:grid-cols-[150px_minmax(220px,1fr)_100px_auto] lg:min-w-[680px]">
             <select
               className="input h-10"
               value={newKind}
@@ -137,6 +158,15 @@ export default function LocationsPage() {
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void addLocation()
               }}
+            />
+            <input
+              className="input h-10"
+              type="number"
+              min="0"
+              value={newCapacity}
+              disabled={!isAdmin || savingLocation || newKind !== 'location'}
+              placeholder="Capacity"
+              onChange={(event) => setNewCapacity(event.target.value)}
             />
             <button
               type="button"
@@ -171,18 +201,41 @@ export default function LocationsPage() {
               {labLocations.custom.map((row) => (
                 <span key={row.id} className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-white px-2.5 py-1 text-xs text-ink-600 dark:border-ink-800 dark:bg-ink-950 dark:text-ink-300">
                   {row.name}
-                  <span className="text-ink-300">·</span>
+                  <span className="text-ink-300">-</span>
                   <span className="text-ink-400">{row.kind === 'location' ? 'main' : 'shelf'}</span>
+                  {row.capacity != null && (
+                    <>
+                      <span className="text-ink-300">-</span>
+                      <span className="text-ink-400">cap {row.capacity}</span>
+                    </>
+                  )}
+                  {row.last_inspected_at && (
+                    <>
+                      <span className="text-ink-300">-</span>
+                      <span className="text-ink-400">checked {formatDate(row.last_inspected_at.slice(0, 10))}</span>
+                    </>
+                  )}
                   {isAdmin && (
-                    <button
-                      type="button"
-                      className="ml-1 rounded-full p-0.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
-                      disabled={savingLocation}
-                      onClick={() => void removeLocation(row)}
-                      title={`Remove ${row.name}`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="ml-1 rounded-full p-0.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                        disabled={savingLocation}
+                        onClick={() => void inspectLocation(row)}
+                        title={`Mark ${row.name} inspected`}
+                      >
+                        <Check className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full p-0.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                        disabled={savingLocation}
+                        onClick={() => void removeLocation(row)}
+                        title={`Remove ${row.name}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </>
                   )}
                 </span>
               ))}

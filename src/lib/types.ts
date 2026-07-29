@@ -332,6 +332,10 @@ export interface LabLocation {
   id: string
   name: string
   kind: 'location' | 'sub_location'
+  capacity: number | null
+  notes: string | null
+  last_inspected_at: string | null
+  inspected_by: string | null
   created_by: string | null
   created_at: string
 }

@@ -7,7 +7,8 @@ import { useInventory } from '../context/InventoryContext'
 import { api } from '../lib/api'
 import { containerDeepLink, locationDeepLink, memberDeepLink, qrDataUrl } from '../lib/qr'
 import type { Chemical, Profile } from '../lib/types'
-import { formatSize, matchesQuery, uniqueSorted } from '../lib/utils'
+import { useLabLocations } from '../lib/useLabLocations'
+import { formatSize, matchesQuery } from '../lib/utils'
 
 type LabelMode = 'container' | 'location' | 'member'
 
@@ -55,6 +56,7 @@ function matchesLabel(item: Pick<PrintableLabel, 'title' | 'subtitle' | 'detail'
  */
 export default function LabelsPage() {
   const { chemicals, loading } = useInventory()
+  const labLocations = useLabLocations(chemicals)
 
   const [mode, setMode] = useState<LabelMode>('container')
   const [q, setQ] = useState('')
@@ -63,7 +65,7 @@ export default function LabelsPage() {
   const [qrs, setQrs] = useState<Record<string, string>>({})
   const [profiles, setProfiles] = useState<Profile[]>([])
 
-  const locationOptions = useMemo(() => uniqueSorted(chemicals.map((c) => c.location)), [chemicals])
+  const locationOptions = labLocations.locations
 
   useEffect(() => {
     let live = true
@@ -78,7 +80,7 @@ export default function LabelsPage() {
 
   const allLabels = useMemo<PrintableLabel[]>(() => {
     if (mode === 'location') {
-      return uniqueSorted(chemicals.map((c) => c.location))
+      return labLocations.locations
         .map((location) => {
           const rows = chemicals.filter((c) => c.location === location)
           return {
@@ -127,7 +129,7 @@ export default function LabelsPage() {
         chemical,
         url: containerDeepLink(chemical.code),
       }))
-  }, [chemicals, locations, mode, profiles, q])
+  }, [chemicals, labLocations.locations, locations, mode, profiles, q])
 
   const selected = useMemo(() => allLabels.filter((item) => picked.has(item.id)), [allLabels, picked])
 

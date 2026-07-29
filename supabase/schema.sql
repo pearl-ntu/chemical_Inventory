@@ -307,6 +307,10 @@ create table if not exists public.lab_locations (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
   kind        text not null check (kind in ('location', 'sub_location')),
+  capacity    integer,
+  notes       text,
+  last_inspected_at timestamptz,
+  inspected_by text,
   created_by  uuid references auth.users on delete set null,
   created_at  timestamptz not null default now()
 );

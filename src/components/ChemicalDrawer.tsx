@@ -12,6 +12,7 @@ import {
   MapPin,
   PackagePlus,
   Pencil,
+  Send,
   Trash2,
   User,
 } from 'lucide-react'
@@ -23,10 +24,11 @@ import { resolveDeliveryPhotoUrl } from '../lib/deliveryPhoto'
 import * as pubchem from '../lib/pubchem'
 import { containerDeepLink, qrDataUrl } from '../lib/qr'
 import { STATUS_LABEL, type Chemical, type ResearchAsset } from '../lib/types'
-import { cx, formatDate, formatSize, statusTone } from '../lib/utils'
+import { cx, formatDate, formatSize, statusTone, todayISO } from '../lib/utils'
+import { useLabLocations } from '../lib/useLabLocations'
 import { HazardBadges } from './HazardBadges'
 import { LazyMolfileSvgRenderer, LazyReactionViewer } from './LazyStructure'
-import { ConfirmDialog, Drawer, Spinner } from './ui'
+import { ConfirmDialog, Drawer, Field, Modal, Spinner } from './ui'
 import { CommentThread } from './CommentThread'
 import { Molecule3DViewer } from './Molecule3DViewer'
 import { PubChemStructureImage } from './PubChemStructureImage'
@@ -61,7 +63,8 @@ export function ChemicalDrawer({
   onEdit: (c: Chemical) => void
 }) {
   const { canEdit, isAdmin, profile } = useAuth()
-  const { markEmpty, restock, remove } = useInventory()
+  const { chemicals, markEmpty, restock, remove, update } = useInventory()
+  const labLocations = useLabLocations(chemicals)
   const toast = useToast()
 
   const [qr, setQr] = useState<string | null>(null)
@@ -73,6 +76,16 @@ export function ChemicalDrawer({
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [relatedAssets, setRelatedAssets] = useState<ResearchAsset[]>([])
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [moveLocation, setMoveLocation] = useState('')
+  const [moveSubLocation, setMoveSubLocation] = useState('')
+  const [moveNote, setMoveNote] = useState('')
+  const [disposeOpen, setDisposeOpen] = useState(false)
+  const [wasteClass, setWasteClass] = useState('')
+  const [disposalReason, setDisposalReason] = useState('')
+  const [borrowOpen, setBorrowOpen] = useState(false)
+  const [borrower, setBorrower] = useState('')
+  const [returnDate, setReturnDate] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -84,6 +97,13 @@ export function ChemicalDrawer({
     setStructureView('2d')
     setPhotoUrl(null)
     setRelatedAssets([])
+    setMoveLocation(chemical?.location ?? '')
+    setMoveSubLocation(chemical?.sub_location ?? '')
+    setMoveNote('')
+    setWasteClass(chemical?.disposal_waste_class ?? '')
+    setDisposalReason(chemical?.disposal_reason ?? '')
+    setBorrower('')
+    setReturnDate('')
     if (!chemical) return
 
     let live = true
@@ -140,6 +160,52 @@ export function ChemicalDrawer({
     }
   }
 
+  async function saveMove() {
+    const from = [c.location, c.sub_location].filter(Boolean).join(' / ') || 'Unassigned'
+    const to = [moveLocation || null, moveSubLocation || null].filter(Boolean).join(' / ') || 'Unassigned'
+    await act(async () => {
+      await update(
+        c.id,
+        { location: moveLocation || null, sub_location: moveSubLocation || null },
+        `Moved ${c.name} from ${from} to ${to}${moveNote.trim() ? ` - ${moveNote.trim()}` : ''}`,
+      )
+      setMoveOpen(false)
+      toast.success(`Moved to ${to}.`)
+    })
+  }
+
+  async function saveDisposal() {
+    await act(async () => {
+      await update(
+        c.id,
+        {
+          status: 'disposed',
+          quantity: 0,
+          date_emptied: todayISO(),
+          disposal_date: todayISO(),
+          disposal_waste_class: wasteClass || null,
+          disposal_reason: disposalReason || 'Disposed from drawer workflow',
+        },
+        `Disposed ${c.name}${wasteClass ? ` as ${wasteClass}` : ''}`,
+      )
+      setDisposeOpen(false)
+      toast.success(`${c.name} marked disposed.`)
+    })
+  }
+
+  async function saveBorrowed() {
+    const stamp = `Borrowed by ${borrower.trim() || 'unknown'}${returnDate ? `; expected return ${returnDate}` : ''}; recorded ${todayISO()} by ${profile?.full_name ?? 'PEARL'}`
+    await act(async () => {
+      await update(
+        c.id,
+        { remarks: [c.remarks, stamp].filter(Boolean).join('\n') },
+        `Checkout note added for ${c.name}: ${stamp}`,
+      )
+      setBorrowOpen(false)
+      toast.success('Borrow note added.')
+    })
+  }
+
   return (
     <>
       <Drawer
@@ -152,6 +218,12 @@ export function ChemicalDrawer({
               <button className="btn-secondary" onClick={() => onEdit(c)} disabled={busy}>
                 <Pencil className="h-4 w-4" /> Edit
               </button>
+              <button className="btn-secondary" onClick={() => setMoveOpen(true)} disabled={busy}>
+                <MapPin className="h-4 w-4" /> Move
+              </button>
+              <button className="btn-secondary" onClick={() => setBorrowOpen(true)} disabled={busy}>
+                <Send className="h-4 w-4" /> Borrow
+              </button>
               {c.status === 'empty' ? (
                 <button
                   className="btn-secondary"
@@ -163,6 +235,11 @@ export function ChemicalDrawer({
               ) : (
                 <button className="btn-secondary" disabled={busy} onClick={() => void act(() => markEmpty(c))}>
                   <CircleSlash className="h-4 w-4" /> Mark empty
+                </button>
+              )}
+              {c.status !== 'disposed' && (
+                <button className="btn-secondary" disabled={busy} onClick={() => setDisposeOpen(true)}>
+                  <CircleSlash className="h-4 w-4" /> Dispose
                 </button>
               )}
               {canDelete && (
@@ -412,6 +489,134 @@ export function ChemicalDrawer({
           <CommentThread resourceType="chemical" resourceId={c.id} />
         </div>
       </Drawer>
+
+      <Modal
+        open={moveOpen}
+        onClose={() => setMoveOpen(false)}
+        title="Move chemical"
+        description={`Record a location change for ${c.code}.`}
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setMoveOpen(false)} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" onClick={() => void saveMove()} disabled={busy}>
+              {busy ? <Spinner /> : <MapPin className="h-4 w-4" />} Save move
+            </button>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="New location">
+            <input
+              className="input"
+              list="drawer-locations"
+              value={moveLocation}
+              onChange={(event) => setMoveLocation(event.target.value)}
+            />
+            <datalist id="drawer-locations">
+              {labLocations.locations.map((location) => (
+                <option key={location} value={location} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="Shelf / position">
+            <input
+              className="input"
+              list="drawer-sub-locations"
+              value={moveSubLocation}
+              onChange={(event) => setMoveSubLocation(event.target.value)}
+            />
+            <datalist id="drawer-sub-locations">
+              {labLocations.subLocations.map((location) => (
+                <option key={location} value={location} />
+              ))}
+            </datalist>
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Move note">
+              <input
+                className="input"
+                value={moveNote}
+                onChange={(event) => setMoveNote(event.target.value)}
+                placeholder="Optional reason, e.g. safety audit or owner handover"
+              />
+            </Field>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={disposeOpen}
+        onClose={() => setDisposeOpen(false)}
+        title="Disposal log"
+        description="Mark this record disposed and keep the waste class/reason attached to the container history."
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setDisposeOpen(false)} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" onClick={() => void saveDisposal()} disabled={busy}>
+              {busy ? <Spinner /> : <CircleSlash className="h-4 w-4" />} Mark disposed
+            </button>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Waste class">
+            <input
+              className="input"
+              value={wasteClass}
+              onChange={(event) => setWasteClass(event.target.value)}
+              placeholder="Halogenated solvent, acidic waste..."
+            />
+          </Field>
+          <Field label="Reason">
+            <input
+              className="input"
+              value={disposalReason}
+              onChange={(event) => setDisposalReason(event.target.value)}
+              placeholder="Expired, empty, contaminated..."
+            />
+          </Field>
+        </div>
+      </Modal>
+
+      <Modal
+        open={borrowOpen}
+        onClose={() => setBorrowOpen(false)}
+        title="Borrow / checkout note"
+        description="Adds a visible note to the record without changing stock or deleting history."
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setBorrowOpen(false)} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" onClick={() => void saveBorrowed()} disabled={busy || !borrower.trim()}>
+              {busy ? <Spinner /> : <Send className="h-4 w-4" />} Add note
+            </button>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Borrowed by">
+            <input
+              className="input"
+              value={borrower}
+              onChange={(event) => setBorrower(event.target.value)}
+              placeholder="Name or group"
+            />
+          </Field>
+          <Field label="Expected return">
+            <input
+              className="input"
+              type="date"
+              value={returnDate}
+              onChange={(event) => setReturnDate(event.target.value)}
+            />
+          </Field>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={confirmDelete}
