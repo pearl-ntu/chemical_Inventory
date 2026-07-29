@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Check, Database, Link2, ListChecks, Plus, Server, Tags } from 'lucide-react'
+import { AlertTriangle, BookMarked, Check, Database, Link2, ListChecks, Plus, Server, Tags } from 'lucide-react'
 import { BarList, Timeline } from '../components/charts'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen } from '../components/ui'
@@ -123,6 +123,9 @@ export default function ComputationalDashboardPage() {
             </button>
             <button className="btn-secondary" onClick={() => navigate('/computational/jobs')}>
               <ListChecks className="h-4 w-4" /> Job Monitor
+            </button>
+            <button className="btn-secondary" onClick={() => navigate('/computational/protocols')}>
+              <BookMarked className="h-4 w-4" /> Methods
             </button>
             <button className="btn-primary" onClick={() => navigate('/research-assets')}>
               <Plus className="h-4 w-4" /> Add asset

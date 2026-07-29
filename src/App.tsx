@@ -11,6 +11,7 @@ import ComputationalAnalyticsPage from './pages/ComputationalAnalyticsPage'
 import ComputationalDashboardPage from './pages/ComputationalDashboardPage'
 import ComputationalWorkbenchPage from './pages/ComputationalWorkbenchPage'
 import ComputationalJobsPage from './pages/ComputationalJobsPage'
+import ComputationalProtocolsPage from './pages/ComputationalProtocolsPage'
 import DashboardPage from './pages/DashboardPage'
 import EquipmentPage from './pages/EquipmentPage'
 import HpcSyncPage from './pages/HpcSyncPage'
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="computational" element={<ComputationalDashboardPage />} />
           <Route path="computational/workbench" element={<ComputationalWorkbenchPage />} />
+          <Route path="computational/protocols" element={<ComputationalProtocolsPage />} />
           <Route path="computational/project-map" element={<ProjectMapPage workspace="computational" />} />
           <Route path="computational/jobs" element={<ComputationalJobsPage />} />
           <Route path="computational/analytics" element={<ComputationalAnalyticsPage />} />

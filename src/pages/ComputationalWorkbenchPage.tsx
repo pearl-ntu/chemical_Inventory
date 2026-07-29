@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
@@ -17,6 +17,7 @@ import { PageHeader } from '../components/Layout'
 import { Molecule3DViewer } from '../components/Molecule3DViewer'
 import { Spinner, Field } from '../components/ui'
 import { useToast } from '../context/ToastContext'
+import { consumeActiveProtocol } from '../lib/computationalProtocols'
 import {
   BASES,
   FUNCTIONALS,
@@ -111,6 +112,35 @@ export default function ComputationalWorkbenchPage() {
     }
   })
   const [hpcTarget, setHpcTarget] = useState('pearl-generated')
+
+  useEffect(() => {
+    const protocol = consumeActiveProtocol()
+    if (!protocol) return
+    setSoftware(protocol.software)
+    setMethod(protocol.method)
+    setBasis(protocol.basis)
+    setSolventModel(protocol.solventModel)
+    setSolventName(protocol.solventName)
+    setMode(protocol.mode)
+    setStep(protocol.step)
+    setMultiSteps(protocol.multiSteps)
+    setScheduler(protocol.scheduler)
+    setQueue(protocol.queue)
+    setNproc(protocol.nproc)
+    setMemory(protocol.memory)
+    setMaxcoreMb(protocol.maxcoreMb)
+    setWalltime(protocol.walltime)
+    setProject(protocol.project)
+    setTdStates(protocol.tdStates)
+    setTdRoot(protocol.tdRoot)
+    setStateType(protocol.stateType)
+    setPopFull(protocol.popFull)
+    setDispersion(protocol.dispersion)
+    setSocEnable(protocol.socEnable)
+    setFiles([])
+    setTab('input')
+    toast.success(`Loaded protocol: ${protocol.title}`)
+  }, [toast])
 
   const steps = software === 'gaussian' ? GAUSSIAN_STEPS : ORCA_STEPS
   const config = useMemo<QuantumConfig>(() => ({

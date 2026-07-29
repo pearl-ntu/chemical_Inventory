@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
   BarChart3,
+  BookMarked,
   BookOpen,
   Bot,
   ChevronDown,
@@ -47,6 +48,7 @@ const NAV = [
 const COMPUTATIONAL_NAV = [
   { to: '/computational', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/computational/workbench', label: 'Workbench', icon: Bot, end: false },
+  { to: '/computational/protocols', label: 'Method Library', icon: BookMarked, end: false },
   { to: '/research-assets', label: 'Research Assets', icon: Database, end: false },
   { to: '/computational/project-map', label: 'Project Map', icon: GitBranch, end: false },
   { to: '/computational/jobs', label: 'Job Monitor', icon: ListChecks, end: false },
