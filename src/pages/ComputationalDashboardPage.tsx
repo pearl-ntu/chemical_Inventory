@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Check, Database, Link2, Plus, Server, Tags } from 'lucide-react'
+import { AlertTriangle, Check, Database, Link2, ListChecks, Plus, Server, Tags } from 'lucide-react'
 import { BarList, Timeline } from '../components/charts'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen } from '../components/ui'
@@ -72,6 +72,8 @@ export default function ComputationalDashboardPage() {
       datasets: assets.filter((a) => a.type === 'dataset'),
       models: assets.filter((a) => a.type === 'model'),
       simulations: assets.filter((a) => a.type === 'simulation'),
+      failedJobs: assets.filter((a) => a.type === 'simulation' && a.status === 'failed'),
+      runningJobs: assets.filter((a) => a.type === 'simulation' && a.status === 'running'),
       duplicates,
       missingDescription,
       missingTags,
@@ -119,6 +121,9 @@ export default function ComputationalDashboardPage() {
             <button className="btn-secondary" onClick={() => navigate('/computational/storage')}>
               <Server className="h-4 w-4" /> Linux/HPC Sync
             </button>
+            <button className="btn-secondary" onClick={() => navigate('/computational/jobs')}>
+              <ListChecks className="h-4 w-4" /> Job Monitor
+            </button>
             <button className="btn-primary" onClick={() => navigate('/research-assets')}>
               <Plus className="h-4 w-4" /> Add asset
             </button>
@@ -129,7 +134,7 @@ export default function ComputationalDashboardPage() {
       <div className="card grid grid-cols-2 divide-y divide-ink-100 p-0 sm:grid-cols-4 sm:divide-x sm:divide-y-0 dark:divide-ink-800">
         <Kpi label="Assets" value={assets.length} sub="indexed records" />
         <Kpi label="Datasets" value={stats.datasets.length} sub="metadata pointers" />
-        <Kpi label="Models" value={stats.models.length} sub="checkpoints/code" />
+        <Kpi label="Simulations" value={stats.simulations.length} sub={`${stats.runningJobs.length} running, ${stats.failedJobs.length} failed`} tone={stats.failedJobs.length ? 'warning' : 'default'} />
         <Kpi label="Needs attention" value={stats.attention.length} sub="cleanup queue" tone={stats.attention.length ? 'warning' : 'good'} />
       </div>
 
