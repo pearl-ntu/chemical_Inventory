@@ -328,6 +328,14 @@ export interface Equipment {
 
 export type EquipmentInput = Pick<Equipment, 'name' | 'location' | 'notes'>
 
+export interface LabLocation {
+  id: string
+  name: string
+  kind: 'location' | 'sub_location'
+  created_by: string | null
+  created_at: string
+}
+
 export interface EquipmentBooking {
   id: string
   equipment_id: string

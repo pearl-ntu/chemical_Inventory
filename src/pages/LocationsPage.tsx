@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, FlaskConical, MapPin, Refrigerator, ShieldAlert, Warehouse } from 'lucide-react'
+import { ChevronDown, FlaskConical, MapPin, Plus, Refrigerator, ShieldAlert, Trash2, Warehouse } from 'lucide-react'
 import { ChemicalDrawer } from '../components/ChemicalDrawer'
 import { HazardBadges } from '../components/HazardBadges'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen, SearchInput } from '../components/ui'
+import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
+import { useToast } from '../context/ToastContext'
 import { INCOMPATIBLE_PAIRS } from '../lib/hazardHints'
-import { LAB_LOCATIONS } from '../lib/labLocations'
-import { STATUS_LABEL, type Chemical } from '../lib/types'
+import { STATUS_LABEL, type Chemical, type LabLocation } from '../lib/types'
+import { useLabLocations } from '../lib/useLabLocations'
 import { cx, formatSize, locationGroup, matchesQuery, statusTone } from '../lib/utils'
 
 const GROUP_ICON: Record<string, typeof MapPin> = {
@@ -19,7 +21,13 @@ const GROUP_ICON: Record<string, typeof MapPin> = {
 
 export default function LocationsPage() {
   const { chemicals, loading } = useInventory()
+  const { profile, isAdmin } = useAuth()
+  const toast = useToast()
+  const labLocations = useLabLocations(chemicals)
   const [q, setQ] = useState('')
+  const [newLocation, setNewLocation] = useState('')
+  const [newKind, setNewKind] = useState<LabLocation['kind']>('location')
+  const [savingLocation, setSavingLocation] = useState(false)
   const [open, setOpen] = useState<Set<string>>(new Set())
   // Tracked by id and derived live so the drawer never freezes on a
   // pre-mutation snapshot (e.g. right after "Mark empty").
@@ -29,7 +37,7 @@ export default function LocationsPage() {
   const groups = useMemo(() => {
     const rows = chemicals.filter((c) => c.status !== 'empty' && c.status !== 'disposed')
     const byLocation = new Map<string, Chemical[]>()
-    for (const location of LAB_LOCATIONS) {
+    for (const location of labLocations.locations) {
       byLocation.set(location, [])
     }
     for (const c of rows) {
@@ -53,7 +61,33 @@ export default function LocationsPage() {
       return i === -1 ? order.length : i
     }
     return [...byGroup.entries()].sort((a, b) => rank(a[0]) - rank(b[0]))
-  }, [chemicals])
+  }, [chemicals, labLocations.locations])
+
+  async function addLocation() {
+    if (!profile) return
+    setSavingLocation(true)
+    try {
+      const row = await labLocations.add(newLocation, newKind, profile)
+      setNewLocation('')
+      toast.success(`Added ${row.name}.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not add that location.')
+    } finally {
+      setSavingLocation(false)
+    }
+  }
+
+  async function removeLocation(row: LabLocation) {
+    setSavingLocation(true)
+    try {
+      await labLocations.remove(row)
+      toast.success(`Removed ${row.name}.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove that location.')
+    } finally {
+      setSavingLocation(false)
+    }
+  }
 
   /** Flags shelves holding classes that should not sit together. */
   function segregationWarnings(items: Chemical[]): string[] {
@@ -75,6 +109,87 @@ export default function LocationsPage() {
       <div className="mb-4 max-w-md">
         <SearchInput value={q} onChange={setQ} placeholder="Find a chemical across all shelves…" />
       </div>
+
+      <section className="card mb-4 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-50">Location dropdowns</h2>
+            <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+              PEARL includes the lab map by default. Add extra temporary shelves, boxes, benches, or new cabinets here.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[160px_minmax(220px,1fr)_auto] lg:min-w-[560px]">
+            <select
+              className="input h-10"
+              value={newKind}
+              disabled={!isAdmin || savingLocation}
+              onChange={(event) => setNewKind(event.target.value as LabLocation['kind'])}
+            >
+              <option value="location">Main location</option>
+              <option value="sub_location">Shelf / position</option>
+            </select>
+            <input
+              className="input h-10"
+              value={newLocation}
+              disabled={!isAdmin || savingLocation}
+              placeholder={newKind === 'location' ? 'e.g. Cabinet 25 or Glovebox' : 'e.g. Drawer A'}
+              onChange={(event) => setNewLocation(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void addLocation()
+              }}
+            />
+            <button
+              type="button"
+              className="btn-primary h-10"
+              disabled={!isAdmin || savingLocation || !newLocation.trim()}
+              onClick={() => void addLocation()}
+              title={isAdmin ? 'Add to PEARL location dropdowns' : 'Only admins can edit the shared location dropdowns.'}
+            >
+              <Plus className="h-4 w-4" /> Add
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="rounded-full bg-ink-100 px-2.5 py-1 text-xs font-medium text-ink-500 dark:bg-ink-800 dark:text-ink-300">
+            {labLocations.locations.length} main locations
+          </span>
+          <span className="rounded-full bg-ink-100 px-2.5 py-1 text-xs font-medium text-ink-500 dark:bg-ink-800 dark:text-ink-300">
+            {labLocations.subLocations.length} shelf/position options
+          </span>
+          {labLocations.loading && (
+            <span className="rounded-full bg-pearl-50 px-2.5 py-1 text-xs font-medium text-pearl-700 dark:bg-pearl-500/10 dark:text-pearl-200">
+              Loading custom list...
+            </span>
+          )}
+        </div>
+
+        {labLocations.custom.length > 0 && (
+          <div className="mt-3 border-t border-ink-100 pt-3 dark:border-ink-800">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-400">Custom additions</p>
+            <div className="flex flex-wrap gap-2">
+              {labLocations.custom.map((row) => (
+                <span key={row.id} className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-white px-2.5 py-1 text-xs text-ink-600 dark:border-ink-800 dark:bg-ink-950 dark:text-ink-300">
+                  {row.name}
+                  <span className="text-ink-300">·</span>
+                  <span className="text-ink-400">{row.kind === 'location' ? 'main' : 'shelf'}</span>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="ml-1 rounded-full p-0.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                      disabled={savingLocation}
+                      onClick={() => void removeLocation(row)}
+                      title={`Remove ${row.name}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
 
       {groups.length === 0 ? (
         <EmptyState icon={<MapPin className="h-6 w-6" />} title="No locations recorded yet" />

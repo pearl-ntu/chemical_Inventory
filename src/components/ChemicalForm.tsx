@@ -4,10 +4,10 @@ import { DeliveryPhotoPanel } from './DeliveryPhotoPanel'
 import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
 import { hazardHint } from '../lib/hazardHints'
-import { LAB_LOCATIONS, LAB_SUB_LOCATIONS } from '../lib/labLocations'
 import * as pubchem from '../lib/pubchem'
 import { HAZARDS, SIZE_UNITS, STATUSES, STATUS_LABEL, type Chemical, type ChemicalInput } from '../lib/types'
 import { cx, todayISO, uniqueSorted, validateCAS } from '../lib/utils'
+import { useLabLocations } from '../lib/useLabLocations'
 import { Field, Modal, Spinner } from './ui'
 import {
   LazyMolfileSvgRenderer,
@@ -168,14 +168,7 @@ export function ChemicalForm({
     saveNewChemicalDraft(form)
   }, [open, editing, form])
 
-  const locations = useMemo(
-    () => uniqueSorted([...LAB_LOCATIONS, ...chemicals.map((c) => c.location)]),
-    [chemicals],
-  )
-  const subLocations = useMemo(
-    () => uniqueSorted([...LAB_SUB_LOCATIONS, ...chemicals.map((c) => c.sub_location)]),
-    [chemicals],
-  )
+  const { locations, subLocations } = useLabLocations(chemicals)
   const suppliers = useMemo(() => uniqueSorted(chemicals.map((c) => c.supplier)), [chemicals])
   const systems = useMemo(() => uniqueSorted(chemicals.map((c) => c.system)), [chemicals])
   const projects = useMemo(() => uniqueSorted(chemicals.map((c) => c.project)), [chemicals])

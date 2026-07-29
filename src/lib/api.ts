@@ -23,6 +23,7 @@ import type {
   EquipmentBookingInput,
   EquipmentInput,
   Invite,
+  LabLocation,
   MemberOffboardingSummary,
   OffboardingItem,
   OwnershipTransferInput,
@@ -39,6 +40,8 @@ import type {
 import { nextCode } from './utils'
 
 export class ApiError extends Error {}
+
+const LOCAL_LAB_LOCATIONS_KEY = 'pearl.custom_lab_locations'
 
 export interface AskPearlReply {
   answer: string
@@ -88,6 +91,18 @@ function itemForChemical(row: Chemical): OffboardingItem {
       .join(' ') || null,
     storage_link: null,
   }
+}
+
+function localLabLocations(): LabLocation[] {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_LAB_LOCATIONS_KEY) ?? '[]') as LabLocation[]
+  } catch {
+    return []
+  }
+}
+
+function saveLocalLabLocations(rows: LabLocation[]) {
+  localStorage.setItem(LOCAL_LAB_LOCATIONS_KEY, JSON.stringify(rows))
 }
 
 function itemForResearchAsset(row: ResearchAsset): OffboardingItem {
@@ -421,6 +436,67 @@ export const api = {
     }
     const res = await invokeAskPearl({ action: 'draft_methods', project })
     return String(res?.draft ?? '')
+  },
+
+  async listLabLocations(): Promise<LabLocation[]> {
+    if (!IS_CLOUD) return localLabLocations()
+    const { data, error } = await requireSupabase()
+      .from('lab_locations')
+      .select('*')
+      .order('kind', { ascending: true })
+      .order('name', { ascending: true })
+    if (missingTable(error)) return []
+    if (error) fail('Could not load custom lab locations', error)
+    return (data ?? []) as LabLocation[]
+  },
+
+  async addLabLocation(name: string, kind: LabLocation['kind'], actor: Profile): Promise<LabLocation> {
+    const clean = name.trim().replace(/\s+/g, ' ')
+    if (!clean) throw new ApiError('Enter a location name first.')
+
+    if (!IS_CLOUD) {
+      const existing = localLabLocations()
+      const duplicate = existing.find((row) => row.kind === kind && row.name.toLowerCase() === clean.toLowerCase())
+      if (duplicate) return duplicate
+      const row: LabLocation = {
+        id: crypto.randomUUID(),
+        name: clean,
+        kind,
+        created_by: actor.id,
+        created_at: new Date().toISOString(),
+      }
+      saveLocalLabLocations([...existing, row])
+      return row
+    }
+
+    const { data, error } = await requireSupabase()
+      .from('lab_locations')
+      .insert({ name: clean, kind, created_by: actor.id })
+      .select()
+      .single()
+    if (missingTable(error)) {
+      throw new ApiError('Run supabase/upgrade_lab_locations.sql first, then add custom lab locations.')
+    }
+    if (error?.code === '23505') {
+      const { data: rows } = await requireSupabase()
+        .from('lab_locations')
+        .select('*')
+        .eq('kind', kind)
+      const duplicate = ((rows ?? []) as LabLocation[]).find((row) => row.name.toLowerCase() === clean.toLowerCase())
+      if (duplicate) return duplicate
+    }
+    if (error) fail('Could not add this lab location', error)
+    return data as LabLocation
+  },
+
+  async deleteLabLocation(row: LabLocation): Promise<void> {
+    if (!IS_CLOUD) {
+      saveLocalLabLocations(localLabLocations().filter((item) => item.id !== row.id))
+      return
+    }
+    const { error } = await requireSupabase().from('lab_locations').delete().eq('id', row.id)
+    if (missingTable(error)) return
+    if (error) fail('Could not remove this lab location', error)
   },
 
   async listChemicals(): Promise<Chemical[]> {
