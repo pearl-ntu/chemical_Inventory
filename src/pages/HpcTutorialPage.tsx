@@ -16,7 +16,6 @@ import agentSource from '../../tools/pearl_hpc_agent.py?raw'
 
 const DEFAULT_AGENT_ROOT = '/scratch/users/<ntu-or-sutd>/<account>/<project-folder>'
 const AGENT_COMMAND = `PEARL_AGENT_ROOT=${DEFAULT_AGENT_ROOT} PEARL_AGENT_TOKEN=choose-a-secret python3 ~/pearl_hpc_agent.py`
-const AGENT_WRITE_COMMAND = `PEARL_AGENT_ROOT=${DEFAULT_AGENT_ROOT} PEARL_AGENT_TOKEN=choose-a-secret PEARL_AGENT_ALLOW_WRITES=1 python3 ~/pearl_hpc_agent.py`
 const TUNNEL_COMMAND = 'ssh -L 8788:127.0.0.1:8787 <your-account>@aspire2antu.nscc.sg'
 const MANIFEST_TEMPLATE = `{
   "project": "Lanthanide emitters",
@@ -32,6 +31,15 @@ const MANIFEST_TEMPLATE = `{
 export default function HpcTutorialPage() {
   const toast = useToast()
   const [copied, setCopied] = useState<string | null>(null)
+  const [account, setAccount] = useState('your_account')
+  const [agentPath, setAgentPath] = useState('/home/users/ntu/your_account/scratch/pearl_hpc_agent.py')
+  const [rootPath, setRootPath] = useState('/home/users/ntu/your_account/scratch/project_folder')
+  const [token, setToken] = useState('pearl-test')
+
+  const customTunnel = `ssh -L 8788:127.0.0.1:8787 ${account}@aspire2antu.nscc.sg`
+  const customAgent = `PEARL_AGENT_ROOT="${rootPath}" PEARL_AGENT_TOKEN="${token}" python3 "${agentPath}"`
+  const customAgentWritable = `PEARL_AGENT_ROOT="${rootPath}" PEARL_AGENT_TOKEN="${token}" PEARL_AGENT_ALLOW_WRITES=1 python3 "${agentPath}"`
+  const projectFolderShortcut = `cd "${rootPath}"\nPEARL_AGENT_ROOT="$PWD" PEARL_AGENT_TOKEN="${token}" python3 "${agentPath}"`
 
   function downloadAgent() {
     download('pearl_hpc_agent.py', agentSource, 'text/x-python;charset=utf-8')
@@ -68,6 +76,71 @@ export default function HpcTutorialPage() {
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)]">
+        <section className="card p-5 xl:col-span-2">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-ink-900 dark:text-ink-50">Easy mode</h2>
+              <p className="mt-1 text-sm text-ink-500">Fill three values once, then copy the exact commands. Most users do not need the longer tutorial below.</p>
+            </div>
+            <Link className="btn-primary" to="/computational/hpc-sync">
+              <TerminalSquare className="h-4 w-4" /> Open sync after this
+            </Link>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-4">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">NSCC login</span>
+              <input className="input" value={account} onChange={(event) => setAccount(event.target.value)} placeholder="syedali1" />
+            </label>
+            <label className="block lg:col-span-2">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">Project folder to scan</span>
+              <input className="input font-mono text-xs" value={rootPath} onChange={(event) => setRootPath(event.target.value)} placeholder="/home/users/ntu/syedali1/scratch/Single_Arm_TICT/New_TICT_Library" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">Token</span>
+              <input className="input" value={token} onChange={(event) => setToken(event.target.value)} />
+            </label>
+            <label className="block lg:col-span-4">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">Where pearl_hpc_agent.py is on NSCC</span>
+              <input className="input font-mono text-xs" value={agentPath} onChange={(event) => setAgentPath(event.target.value)} placeholder="/home/users/ntu/syedali1/scratch/pearl_hpc_agent.py" />
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <QuickCommand
+              title="1. Laptop PowerShell"
+              text="Open this tunnel from your laptop and keep that PowerShell window open."
+              code={customTunnel}
+              onCopy={() => void copy('Laptop tunnel command', customTunnel)}
+              copied={copied === 'Laptop tunnel command'}
+            />
+            <QuickCommand
+              title="2. NSCC terminal"
+              text="Run the agent on NSCC and keep this SSH terminal open."
+              code={customAgent}
+              onCopy={() => void copy('NSCC agent command', customAgent)}
+              copied={copied === 'NSCC agent command'}
+            />
+          </div>
+
+          <div className="mt-3 rounded-lg border border-ink-200 p-3 text-sm dark:border-ink-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-semibold text-ink-900 dark:text-ink-50">Even easier when you are already inside the project folder</p>
+                <p className="mt-1 text-xs text-ink-500">This uses the current folder as the scan root.</p>
+              </div>
+              <button className="btn-secondary py-1.5 text-xs" onClick={() => void copy('Current-folder agent command', projectFolderShortcut)}>
+                <Clipboard className="h-3.5 w-3.5" /> Copy
+              </button>
+            </div>
+            <pre className="mt-2 overflow-auto rounded bg-ink-950 p-3 text-xs text-ink-50">{projectFolderShortcut}</pre>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-pearl-200 bg-pearl-50 p-3 text-sm text-pearl-900 dark:border-pearl-500/25 dark:bg-pearl-500/10 dark:text-pearl-100">
+            In PEARL Linux/HPC Sync use <span className="font-mono">http://127.0.0.1:8788</span>, token <span className="font-mono">{token || 'your token'}</span>, folder <span className="font-mono">.</span>, then run <span className="font-mono">pearl scan .</span>.
+          </div>
+        </section>
+
         <section className="card p-5">
           <div className="grid gap-3 md:grid-cols-3">
             <GuideStep
@@ -140,9 +213,9 @@ export default function HpcTutorialPage() {
           <div className="mt-3 rounded-lg border border-ink-200 p-3 text-sm dark:border-ink-800">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-semibold text-ink-900 dark:text-ink-50">Optional workbench send mode</p>
-              <button className="btn-secondary py-1.5 text-xs" onClick={() => void copy('Write-mode agent command', AGENT_WRITE_COMMAND)}><Clipboard className="h-3.5 w-3.5" /> Copy</button>
+              <button className="btn-secondary py-1.5 text-xs" onClick={() => void copy('Write-mode agent command', customAgentWritable)}><Clipboard className="h-3.5 w-3.5" /> Copy</button>
             </div>
-            <pre className="mt-2 overflow-auto rounded bg-ink-950 p-3 text-xs text-ink-50">{AGENT_WRITE_COMMAND}</pre>
+            <pre className="mt-2 overflow-auto rounded bg-ink-950 p-3 text-xs text-ink-50">{customAgentWritable}</pre>
             <p className="mt-2 text-xs text-ink-500">Use this only when you want the Quantum Input Generator to send generated job files into the selected PEARL_AGENT_ROOT folder.</p>
           </div>
           <div className="mt-3 rounded-lg border border-ink-200 p-3 text-sm dark:border-ink-800">
@@ -192,6 +265,36 @@ function GuideStep({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function QuickCommand({
+  title,
+  text,
+  code,
+  onCopy,
+  copied,
+}: {
+  title: string
+  text: string
+  code: string
+  onCopy: () => void
+  copied?: boolean
+}) {
+  return (
+    <div className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{title}</h3>
+          <p className="mt-1 text-xs leading-relaxed text-ink-500">{text}</p>
+        </div>
+        <button className="btn-secondary shrink-0 py-1.5 text-xs" onClick={onCopy}>
+          <Clipboard className="h-3.5 w-3.5" /> Copy
+        </button>
+      </div>
+      <pre className="mt-3 overflow-auto rounded bg-ink-950 p-3 text-xs leading-relaxed text-ink-50">{code}</pre>
+      {copied && <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-300">Copied</p>}
     </div>
   )
 }
