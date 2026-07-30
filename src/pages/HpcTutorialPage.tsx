@@ -31,9 +31,9 @@ const MANIFEST_TEMPLATE = `{
 function fillAccountPath(path: string, account: string) {
   const cleanAccount = account.trim() || 'your_account'
   return path
-    .replaceAll('<your-account>', cleanAccount)
-    .replaceAll('your_account', cleanAccount)
-    .replaceAll('<account>', cleanAccount)
+    .split('<your-account>').join(cleanAccount)
+    .split('your_account').join(cleanAccount)
+    .split('<account>').join(cleanAccount)
 }
 
 function quoteShell(value: string) {
