@@ -28,6 +28,14 @@ const MANIFEST_TEMPLATE = `{
 }
 `
 
+function fillAccountPath(path: string, account: string) {
+  const cleanAccount = account.trim() || 'your_account'
+  return path
+    .replaceAll('<your-account>', cleanAccount)
+    .replaceAll('your_account', cleanAccount)
+    .replaceAll('<account>', cleanAccount)
+}
+
 export default function HpcTutorialPage() {
   const toast = useToast()
   const [copied, setCopied] = useState<string | null>(null)
@@ -36,10 +44,12 @@ export default function HpcTutorialPage() {
   const [rootPath, setRootPath] = useState('/home/users/ntu/your_account/scratch/project_folder')
   const [token, setToken] = useState('pearl-test')
 
-  const customTunnel = `ssh -L 8788:127.0.0.1:8787 ${account}@aspire2antu.nscc.sg`
-  const customAgent = `PEARL_AGENT_ROOT="${rootPath}" PEARL_AGENT_TOKEN="${token}" python3 "${agentPath}"`
-  const customAgentWritable = `PEARL_AGENT_ROOT="${rootPath}" PEARL_AGENT_TOKEN="${token}" PEARL_AGENT_ALLOW_WRITES=1 python3 "${agentPath}"`
-  const projectFolderShortcut = `cd "${rootPath}"\nPEARL_AGENT_ROOT="$PWD" PEARL_AGENT_TOKEN="${token}" python3 "${agentPath}"`
+  const filledRootPath = fillAccountPath(rootPath, account)
+  const filledAgentPath = fillAccountPath(agentPath, account)
+  const customTunnel = `ssh -L 8788:127.0.0.1:8787 ${account.trim() || 'your_account'}@aspire2antu.nscc.sg`
+  const customAgent = `PEARL_AGENT_ROOT="${filledRootPath}" PEARL_AGENT_TOKEN="${token}" python3 "${filledAgentPath}"`
+  const customAgentWritable = `PEARL_AGENT_ROOT="${filledRootPath}" PEARL_AGENT_TOKEN="${token}" PEARL_AGENT_ALLOW_WRITES=1 python3 "${filledAgentPath}"`
+  const projectFolderShortcut = `cd "${filledRootPath}"\nPEARL_AGENT_ROOT="$PWD" PEARL_AGENT_TOKEN="${token}" python3 "${filledAgentPath}"`
 
   function downloadAgent() {
     download('pearl_hpc_agent.py', agentSource, 'text/x-python;charset=utf-8')
@@ -103,6 +113,7 @@ export default function HpcTutorialPage() {
             <label className="block lg:col-span-4">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">Where pearl_hpc_agent.py is on NSCC</span>
               <input className="input font-mono text-xs" value={agentPath} onChange={(event) => setAgentPath(event.target.value)} placeholder="/home/users/ntu/syedali1/scratch/pearl_hpc_agent.py" />
+              <span className="mt-1 block text-xs text-ink-500">Resolved: <span className="font-mono">{filledAgentPath}</span></span>
             </label>
           </div>
 
