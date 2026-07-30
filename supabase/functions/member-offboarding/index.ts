@@ -234,7 +234,7 @@ Deno.serve(async (req) => {
   const service = createClient(url, key, { auth: { persistSession: false } })
   const { data: actor, error: actorError } = await service
     .from('profiles')
-    .select('id, full_name, email, role, approved')
+    .select('id, full_name, email, role, approved, is_pi')
     .eq('id', userId)
     .single()
   if (actorError || !actor?.approved || actor.role !== 'admin') {
@@ -247,10 +247,13 @@ Deno.serve(async (req) => {
 
   const { data: target, error: targetError } = await service
     .from('profiles')
-    .select('id, full_name, email, role, approved')
+    .select('id, full_name, email, role, approved, is_pi')
     .eq('id', targetId)
     .single()
   if (targetError || !target) return json({ error: 'Target member not found' }, 404)
+  if (target.is_pi && !actor.is_pi) {
+    return json({ error: 'Only the PI can run handover for the PI account.' }, 403)
+  }
 
   if (body.action === 'summary') {
     try {

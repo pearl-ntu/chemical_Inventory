@@ -32,6 +32,7 @@ export default function MembersPage() {
   const [members, setMembers] = useState<Profile[]>([])
   const [invites, setInvites] = useState<Invite[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<
     | { kind: 'revoke'; member: Profile }
@@ -74,6 +75,29 @@ export default function MembersPage() {
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      void load().catch(() => {
+        // The visible Refresh button provides a clear retry path if this
+        // background refresh happens while the connection is unavailable.
+      })
+    }
+    window.addEventListener('focus', refreshOnFocus)
+    return () => window.removeEventListener('focus', refreshOnFocus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function refreshMembers() {
+    setRefreshing(true)
+    try {
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not refresh members.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const pending = useMemo(
     () => members.filter((m) => !m.approved).sort((a, b) => a.created_at.localeCompare(b.created_at)),
@@ -176,6 +200,10 @@ export default function MembersPage() {
 
   async function changeRole(target: Profile, role: Role) {
     if (!profile) return
+    if (target.is_pi && !profile.is_pi) {
+      toast.error('Only the PI can change the PI account’s access level.')
+      return
+    }
     setSaving(target.id)
     try {
       await api.setRole(target, role, profile)
@@ -249,6 +277,10 @@ export default function MembersPage() {
 
   async function revoke(target: Profile) {
     if (!profile) return
+    if (target.is_pi && !profile.is_pi) {
+      toast.error('Only the PI can revoke the PI account’s access.')
+      return
+    }
     setSaving(target.id)
     try {
       await api.revokeAccount(target, profile)
@@ -266,6 +298,10 @@ export default function MembersPage() {
 
   async function removeAccess(target: Profile) {
     if (!profile) return
+    if (target.is_pi && !profile.is_pi) {
+      toast.error('Only the PI can remove the PI account.')
+      return
+    }
     setSaving(target.id)
     try {
       await api.removeMemberAccess(target, profile)
@@ -280,6 +316,10 @@ export default function MembersPage() {
   }
 
   async function openOffboarding(target: Profile) {
+    if (target.is_pi && !profile?.is_pi) {
+      toast.error('Only the PI can start handover for the PI account.')
+      return
+    }
     setOffboarding({ member: target, summary: null, destinations: {} })
     setOffboardingBusy(true)
     try {
@@ -368,6 +408,16 @@ export default function MembersPage() {
       <PageHeader
         title="Members"
         description="Everyone with an account, and what they are allowed to do. Sign-up is open to any email — nobody sees the inventory until you approve them here."
+        actions={
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void refreshMembers()}
+            disabled={refreshing}
+          >
+            {refreshing ? <Spinner /> : <RotateCw className="h-4 w-4" />} Refresh
+          </button>
+        }
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-4">
@@ -580,6 +630,8 @@ export default function MembersPage() {
             {approvedMembers.map((m) => {
               // Never let the last admin demote themselves out of the account.
               const isLastAdmin = m.role === 'admin' && adminCount === 1
+              const piProtected = Boolean(m.is_pi && !isPi)
+              const accessLocked = isLastAdmin || piProtected
               const avatarKey = m.avatar_key ?? localAvatarKey(m.id)
               return (
                 <div key={m.id} className="relative grid grid-cols-[minmax(260px,1fr)_220px_132px_48px] items-center gap-3 border-b border-ink-100 px-4 py-2.5 last:border-b-0 hover:bg-ink-50/70 dark:border-ink-800 dark:hover:bg-ink-900/45">
@@ -671,9 +723,15 @@ export default function MembersPage() {
                     )}
                     <button
                       type="button"
-                      className={`${roleBadgeClass(m.role)} h-7 w-full justify-between px-2.5 capitalize ${isLastAdmin ? 'cursor-not-allowed opacity-60' : 'hover:ring-pearl-500/40'}`}
-                      disabled={saving === m.id || isLastAdmin}
-                      title={isLastAdmin ? 'This is the only admin — promote someone else first.' : ROLE_HELP[m.role]}
+                      className={`${roleBadgeClass(m.role)} h-7 w-full justify-between px-2.5 capitalize ${accessLocked ? 'cursor-not-allowed opacity-60' : 'hover:ring-pearl-500/40'}`}
+                      disabled={saving === m.id || accessLocked}
+                      title={
+                        piProtected
+                          ? 'Only the PI can change the PI account’s access.'
+                          : isLastAdmin
+                            ? 'This is the only admin — promote someone else first.'
+                            : ROLE_HELP[m.role]
+                      }
                       onClick={() => {
                         setActionMenuFor(null)
                         setAvatarMenuFor(null)
@@ -742,7 +800,7 @@ export default function MembersPage() {
                         <MenuAction
                           icon={<ShieldOff className="h-3.5 w-3.5" />}
                           label="Revoke access"
-                          disabled={saving === m.id || isLastAdmin}
+                          disabled={saving === m.id || accessLocked}
                           onClick={() => { setActionMenuFor(null); setConfirm({ kind: 'revoke', member: m }) }}
                         />
                         {isPi && (
@@ -756,14 +814,14 @@ export default function MembersPage() {
                         <MenuAction
                           icon={<UserCheck className="h-3.5 w-3.5" />}
                           label="Offboard"
-                          disabled={saving === m.id || isLastAdmin || m.id === profile?.id}
+                          disabled={saving === m.id || accessLocked || m.id === profile?.id}
                           onClick={() => { setActionMenuFor(null); void openOffboarding(m) }}
                         />
                         <MenuAction
                           icon={<Trash2 className="h-3.5 w-3.5" />}
                           label="Remove"
                           danger
-                          disabled={saving === m.id || isLastAdmin || m.id === profile?.id}
+                          disabled={saving === m.id || accessLocked || m.id === profile?.id}
                           onClick={() => { setActionMenuFor(null); setConfirm({ kind: 'remove', member: m }) }}
                         />
                       </div>
