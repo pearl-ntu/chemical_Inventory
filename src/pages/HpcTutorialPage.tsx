@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { useToast } from '../context/ToastContext'
-import { download } from '../lib/utils'
+import { cx, download } from '../lib/utils'
 import agentSource from '../../tools/pearl_hpc_agent.py?raw'
 
 const DEFAULT_AGENT_ROOT = '/scratch/users/<ntu-or-sutd>/<account>/<project-folder>'
@@ -36,18 +36,32 @@ function fillAccountPath(path: string, account: string) {
     .replaceAll('<account>', cleanAccount)
 }
 
+function quoteShell(value: string) {
+  return `"${value.replace(/"/g, '\\"')}"`
+}
+
 export default function HpcTutorialPage() {
   const toast = useToast()
   const [copied, setCopied] = useState<string | null>(null)
+  const [platform, setPlatform] = useState<'mac' | 'windows'>('mac')
+  const [connection, setConnection] = useState<'direct' | 'jump'>('direct')
   const [account, setAccount] = useState('your_account')
+  const [jumpAccount, setJumpAccount] = useState('your_ntu_username')
   const [agentPath, setAgentPath] = useState('/home/users/ntu/your_account/scratch/pearl_hpc_agent.py')
   const [rootPath, setRootPath] = useState('/home/users/ntu/your_account/scratch/project_folder')
   const [token, setToken] = useState('pearl-test')
+  const [localPort, setLocalPort] = useState('8788')
+  const [jumpPort, setJumpPort] = useState('2222')
 
   const filledRootPath = fillAccountPath(rootPath, account)
   const filledAgentPath = fillAccountPath(agentPath, account)
-  const customTunnel = `ssh -L 8788:127.0.0.1:8787 ${account.trim() || 'your_account'}@aspire2antu.nscc.sg`
-  const customAgent = `PEARL_AGENT_ROOT="${filledRootPath}" PEARL_AGENT_TOKEN="${token}" python3 "${filledAgentPath}"`
+  const nsccAccount = account.trim() || 'your_account'
+  const osLabel = platform === 'windows' ? 'Windows PowerShell' : 'Mac Terminal'
+  const firstJump = `ssh -N -L ${jumpPort}:103.72.192.6:22 ${jumpAccount || 'your_ntu_username'}@172.21.26.100`
+  const directTunnel = `ssh -t -o ExitOnForwardFailure=yes -L 127.0.0.1:${localPort}:127.0.0.1:8787 ${nsccAccount}@aspire2antu.nscc.sg 'cd ${quoteShell(filledRootPath)} && PEARL_AGENT_ROOT="$PWD" PEARL_AGENT_TOKEN="${token}" python3 ${quoteShell(filledAgentPath)}'`
+  const jumpTunnel = `ssh -p ${jumpPort} -t -o ExitOnForwardFailure=yes -L 127.0.0.1:${localPort}:127.0.0.1:8787 ${nsccAccount}@127.0.0.1 'cd ${quoteShell(filledRootPath)} && PEARL_AGENT_ROOT="$PWD" PEARL_AGENT_TOKEN="${token}" python3 ${quoteShell(filledAgentPath)}'`
+  const customTunnel = connection === 'jump' ? jumpTunnel : directTunnel
+  const healthCommand = `${platform === 'windows' ? 'curl.exe' : 'curl'} http://127.0.0.1:${localPort}/health -H "Authorization: Bearer ${token}"`
   const customAgentWritable = `PEARL_AGENT_ROOT="${filledRootPath}" PEARL_AGENT_TOKEN="${token}" PEARL_AGENT_ALLOW_WRITES=1 python3 "${filledAgentPath}"`
   const projectFolderShortcut = `cd "${filledRootPath}"\nPEARL_AGENT_ROOT="$PWD" PEARL_AGENT_TOKEN="${token}" python3 "${filledAgentPath}"`
 
@@ -90,11 +104,32 @@ export default function HpcTutorialPage() {
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-ink-900 dark:text-ink-50">Easy mode</h2>
-              <p className="mt-1 text-sm text-ink-500">Fill three values once, then copy the exact commands. Most users do not need the longer tutorial below.</p>
+              <p className="mt-1 text-sm text-ink-500">Choose how you connect, fill the fields once, then copy the exact commands. Most users do not need the longer tutorial below.</p>
             </div>
             <Link className="btn-primary" to="/computational/hpc-sync">
               <TerminalSquare className="h-4 w-4" /> Open sync after this
             </Link>
+          </div>
+
+          <div className="mb-4 grid gap-3 lg:grid-cols-2">
+            <SegmentedControl
+              label="My computer"
+              value={platform}
+              options={[
+                { value: 'mac', label: 'Mac / Linux Terminal' },
+                { value: 'windows', label: 'Windows PowerShell' },
+              ]}
+              onChange={(value) => setPlatform(value as 'mac' | 'windows')}
+            />
+            <SegmentedControl
+              label="How I reach NSCC"
+              value={connection}
+              options={[
+                { value: 'direct', label: 'Direct / campus' },
+                { value: 'jump', label: 'Home via NTU jump' },
+              ]}
+              onChange={(value) => setConnection(value as 'direct' | 'jump')}
+            />
           </div>
 
           <div className="grid gap-3 lg:grid-cols-4">
@@ -102,6 +137,12 @@ export default function HpcTutorialPage() {
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">NSCC login</span>
               <input className="input" value={account} onChange={(event) => setAccount(event.target.value)} placeholder="syedali1" />
             </label>
+            {connection === 'jump' && (
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">NTU jump username</span>
+                <input className="input" value={jumpAccount} onChange={(event) => setJumpAccount(event.target.value)} placeholder="syedaliabbas.abedi" />
+              </label>
+            )}
             <label className="block lg:col-span-2">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">Project folder to scan</span>
               <input className="input font-mono text-xs" value={rootPath} onChange={(event) => setRootPath(event.target.value)} placeholder="/home/users/ntu/syedali1/scratch/Single_Arm_TICT/New_TICT_Library" />
@@ -110,6 +151,16 @@ export default function HpcTutorialPage() {
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">Token</span>
               <input className="input" value={token} onChange={(event) => setToken(event.target.value)} />
             </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">PEARL local port</span>
+              <input className="input" value={localPort} onChange={(event) => setLocalPort(event.target.value)} placeholder="8788" />
+            </label>
+            {connection === 'jump' && (
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">Jump local port</span>
+                <input className="input" value={jumpPort} onChange={(event) => setJumpPort(event.target.value)} placeholder="2222" />
+              </label>
+            )}
             <label className="block lg:col-span-4">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-400">Where pearl_hpc_agent.py is on NSCC</span>
               <input className="input font-mono text-xs" value={agentPath} onChange={(event) => setAgentPath(event.target.value)} placeholder="/home/users/ntu/syedali1/scratch/pearl_hpc_agent.py" />
@@ -117,20 +168,29 @@ export default function HpcTutorialPage() {
             </label>
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className={cx('mt-4 grid gap-3', connection === 'jump' ? 'xl:grid-cols-3' : 'lg:grid-cols-2')}>
+            {connection === 'jump' && (
+              <QuickCommand
+                title={`1. ${osLabel}: NTU jump`}
+                text={`Start this first from home/VPN and keep it open. It creates localhost:${jumpPort || '2222'} into NSCC SSH.`}
+                code={firstJump}
+                onCopy={() => void copy('NTU jump command', firstJump)}
+                copied={copied === 'NTU jump command'}
+              />
+            )}
             <QuickCommand
-              title="1. Laptop PowerShell"
-              text="Open this tunnel from your laptop and keep that PowerShell window open."
+              title={`${connection === 'jump' ? '2' : '1'}. ${osLabel}: PEARL tunnel + agent`}
+              text={connection === 'jump' ? 'Run this after the NTU jump tunnel is open. It starts the NSCC agent through localhost:2222.' : 'Run this from your computer. It opens the tunnel and starts the NSCC agent in one step.'}
               code={customTunnel}
-              onCopy={() => void copy('Laptop tunnel command', customTunnel)}
-              copied={copied === 'Laptop tunnel command'}
+              onCopy={() => void copy('PEARL tunnel command', customTunnel)}
+              copied={copied === 'PEARL tunnel command'}
             />
             <QuickCommand
-              title="2. NSCC terminal"
-              text="Run the agent on NSCC and keep this SSH terminal open."
-              code={customAgent}
-              onCopy={() => void copy('NSCC agent command', customAgent)}
-              copied={copied === 'NSCC agent command'}
+              title={`${connection === 'jump' ? '3' : '2'}. Test on ${osLabel}`}
+              text="Run this in a separate local terminal. If it returns JSON, PEARL can connect."
+              code={healthCommand}
+              onCopy={() => void copy('Health check command', healthCommand)}
+              copied={copied === 'Health check command'}
             />
           </div>
 
@@ -148,7 +208,7 @@ export default function HpcTutorialPage() {
           </div>
 
           <div className="mt-4 rounded-lg border border-pearl-200 bg-pearl-50 p-3 text-sm text-pearl-900 dark:border-pearl-500/25 dark:bg-pearl-500/10 dark:text-pearl-100">
-            In PEARL Linux/HPC Sync use <span className="font-mono">http://127.0.0.1:8788</span>, token <span className="font-mono">{token || 'your token'}</span>, folder <span className="font-mono">.</span>, then run <span className="font-mono">pearl scan .</span>.
+            In PEARL Linux/HPC Sync use <span className="font-mono">http://127.0.0.1:{localPort || '8788'}</span>, token <span className="font-mono">{token || 'your token'}</span>, folder <span className="font-mono">.</span>, then run <span className="font-mono">pearl scan .</span>.
           </div>
         </section>
 
@@ -306,6 +366,41 @@ function QuickCommand({
       </div>
       <pre className="mt-3 overflow-auto rounded bg-ink-950 p-3 text-xs leading-relaxed text-ink-50">{code}</pre>
       {copied && <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-300">Copied</p>}
+    </div>
+  )
+}
+
+function SegmentedControl({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: Array<{ value: string; label: string }>
+  onChange: (value: string) => void
+}) {
+  return (
+    <div>
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-400">{label}</p>
+      <div className="grid grid-cols-2 gap-1 rounded-lg border border-ink-200 bg-ink-50 p-1 dark:border-ink-800 dark:bg-ink-950">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={cx(
+              'rounded-md px-3 py-2 text-xs font-semibold transition-colors',
+              value === option.value
+                ? 'bg-white text-pearl-800 shadow-sm ring-1 ring-ink-200 dark:bg-ink-800 dark:text-pearl-200 dark:ring-ink-700'
+                : 'text-ink-500 hover:text-ink-800 dark:text-ink-400 dark:hover:text-ink-100',
+            )}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
