@@ -421,7 +421,11 @@ export const auth = {
       return
     }
     const sb = requireSupabase()
-    if (currentPassword) {
+    const profile = await auth.currentProfile()
+    if (!profile) throw new ApiError('Signed in, but no profile could be loaded.')
+
+    if (profile.has_password) {
+      if (!currentPassword) throw new ApiError('Enter your current password.')
       const { error: verifyError } = await sb.auth.signInWithPassword({
         email: email.trim(),
         password: currentPassword,
@@ -436,7 +440,13 @@ export const auth = {
     // someone who just set their first password would still see the "set a
     // password" prompt on their next sign-in.
     const user = (await sb.auth.getUser()).data.user
-    if (user) await sb.from('profiles').update({ has_password: true }).eq('id', user.id)
+    if (user) {
+      const { error: profileError } = await sb
+        .from('profiles')
+        .update({ has_password: true })
+        .eq('id', user.id)
+      if (profileError) fail('Password changed, but could not update the account profile', profileError)
+    }
   },
 
   async updateProfile(id: string, patch: Partial<Profile>): Promise<Profile> {

@@ -45,24 +45,25 @@ export default function SettingsPage() {
   const [showPasswords, setShowPasswords] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
+  const isSettingFirstPassword = MODE === 'cloud' && profile?.has_password === false
 
   async function changePassword() {
     setPasswordError(null)
     if (!profile) return
-    // Demo mode is password-only, so there's always one to verify. In cloud
-    // mode someone who only ever used a magic link has none yet — leaving
-    // this blank sets their first password instead of changing one.
-    if (!currentPassword && MODE !== 'cloud') return setPasswordError('Enter your current password.')
+    if (!isSettingFirstPassword && !currentPassword) {
+      return setPasswordError('Enter your current password.')
+    }
     if (newPassword.length < 8) return setPasswordError('New password needs at least 8 characters.')
     if (newPassword !== confirmPassword) return setPasswordError('The two new passwords don’t match.')
 
     setChangingPassword(true)
     try {
       await auth.changePassword(profile.email, currentPassword || null, newPassword)
+      await refresh()
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-      toast.success('Password changed.')
+      toast.success(isSettingFirstPassword ? 'Password set.' : 'Password changed.')
     } catch (err) {
       setPasswordError(err instanceof Error ? err.message : 'Could not change your password.')
     } finally {
@@ -130,25 +131,24 @@ export default function SettingsPage() {
         {/* password -------------------------------------------------------- */}
         <section className="card p-5">
           <h2 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-ink-500">
-            <KeyRound className="h-4 w-4" /> Password
+            <KeyRound className="h-4 w-4" /> {isSettingFirstPassword ? 'Set a password' : 'Password'}
           </h2>
           <div className="space-y-3">
-            <Field
-              label="Current password"
-              hint={
-                MODE === 'cloud'
-                  ? 'Leave blank if you only ever signed in with an email link.'
-                  : undefined
-              }
-            >
-              <input
-                className="input"
-                type={showPasswords ? 'text' : 'password'}
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-            </Field>
+            {isSettingFirstPassword ? (
+              <p className="rounded-lg bg-pearl-50 px-3 py-2 text-xs leading-relaxed text-pearl-800 dark:bg-pearl-500/10 dark:text-pearl-200">
+                You signed in with a one-time email code, so there is no current password to enter.
+              </p>
+            ) : (
+              <Field label="Current password">
+                <input
+                  className="input"
+                  type={showPasswords ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </Field>
+            )}
             <Field label="New password" hint="At least 8 characters.">
               <input
                 className="input"
@@ -178,7 +178,8 @@ export default function SettingsPage() {
                 onClick={() => void changePassword()}
                 disabled={changingPassword}
               >
-                {changingPassword ? <Spinner /> : <KeyRound className="h-4 w-4" />} Change password
+                {changingPassword ? <Spinner /> : <KeyRound className="h-4 w-4" />}{' '}
+                {isSettingFirstPassword ? 'Set password' : 'Change password'}
               </button>
               <button
                 type="button"
