@@ -255,6 +255,15 @@ Deno.serve(async (req) => {
     return json({ error: 'Only the PI can run handover for the PI account.' }, 403)
   }
 
+  if (body.action === 'delete_member') {
+    if (target.id === actor.id) {
+      return json({ error: 'You cannot remove your own account from the Members page.' }, 400)
+    }
+    const { error } = await service.auth.admin.deleteUser(targetId)
+    if (error) return json({ error: error.message }, 500)
+    return json({ deleted: true })
+  }
+
   if (body.action === 'summary') {
     try {
       return json(await loadSummary(service, target))

@@ -880,14 +880,16 @@ export const api = {
   },
 
   async removeMemberAccess(target: Profile, actor: Profile): Promise<void> {
-    const details = `${target.full_name}'s member profile removed`
+    const details = `${target.full_name}'s account removed`
     if (!IS_CLOUD) {
       localDb.saveUsers(localDb.users().filter((u) => u.id !== target.id))
       logLocal(null, 'role_changed', details, actor)
       return
     }
-    const { error } = await requireSupabase().from('profiles').delete().eq('id', target.id)
-    if (error) fail('Could not remove that member profile', error)
+    await invokeEdgeFunction('member-offboarding', {
+      action: 'delete_member',
+      target_member_id: target.id,
+    })
     await api.log(null, 'role_changed', details, actor)
   },
 

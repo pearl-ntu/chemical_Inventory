@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/Layout'
 import { PiConsoleLayout } from './components/PiConsoleLayout'
+import { SiteCredit } from './components/SiteCredit'
 import { LoadingScreen } from './components/ui'
 import { useAuth } from './context/AuthContext'
 import { InventoryProvider } from './context/InventoryContext'
@@ -44,6 +45,17 @@ import StocktakePage from './pages/StocktakePage'
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 
 export default function App() {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1">
+        <AppContent />
+      </div>
+      <SiteCredit />
+    </div>
+  )
+}
+
+function AppContent() {
   const { profile, loading, isPi } = useAuth()
 
   if (loading) {
