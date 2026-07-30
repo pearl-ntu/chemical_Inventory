@@ -1,0 +1,18 @@
+project_id = "pearl-inventory"
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://pearl-ntu.github.io/chemical_Inventory/"]
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.email]
+secure_password_change = true
+max_frequency = "1m0s"
+otp_length = 6
+
+[auth.email.template.magic_link]
+subject = "Your PEARL sign-in code"
+content_path = "./supabase/templates/magic_link.html"

@@ -57,7 +57,6 @@ export default function LoginPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [linkSent, setLinkSent] = useState(false)
   const sendCooldown = useCooldown()
-  const [useCode, setUseCode] = useState(false)
   const [code, setCode] = useState('')
   const [verifyingCode, setVerifyingCode] = useState(false)
 
@@ -77,7 +76,6 @@ export default function LoginPage() {
     setError(null)
     setNotice(null)
     setLinkSent(false)
-    setUseCode(false)
     setCode('')
   }
 
@@ -94,19 +92,10 @@ export default function LoginPage() {
     }
   }
 
-  async function onSubmitMagicLink(e: FormEvent) {
-    e.preventDefault()
+  async function sendMagicLink() {
     setError(null)
     setNotice(null)
     if (!email.trim()) return setError('Enter your email address.')
-    if (tab === 'signup') {
-      if (!fullName.trim()) return setError('Please enter your name — it appears on every entry you add.')
-      if (!emailDomainAllowed(email)) {
-        return setError(
-          `Sign-ups are limited to ${ALLOWED_EMAIL_DOMAINS.join(', ')} addresses. Ask an admin if you need an exception.`,
-        )
-      }
-    }
     setBusy(true)
     try {
       await auth.sendMagicLink(email)
@@ -117,6 +106,11 @@ export default function LoginPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  function onSubmitMagicLink(e: FormEvent) {
+    e.preventDefault()
+    void sendMagicLink()
   }
 
   async function onSubmitPassword(e: FormEvent) {
@@ -165,8 +159,6 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : 'Could not send the reset email.')
     }
   }
-
-  const showMagicLinkOption = MODE === 'cloud'
 
   return (
     <div className="grid min-h-full lg:grid-cols-2">
@@ -271,152 +263,115 @@ export default function LoginPage() {
           </div>
 
           <h2 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">
-            {tab === 'signin' ? 'Welcome back' : 'Create your account'}
+            {MODE === 'cloud'
+              ? 'Sign in or join PEARL'
+              : tab === 'signin'
+                ? 'Welcome back'
+                : 'Create your account'}
           </h2>
           <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
-            {tab === 'signin'
-              ? 'Sign in to see the group’s live chemical inventory.'
-              : 'Anyone can create an account — an admin approves it before you see anything, so this is safe to leave open.'}
+            {MODE === 'cloud'
+              ? 'Enter your email once. Existing members sign in; new members create an account for admin approval.'
+              : tab === 'signin'
+                ? 'Sign in to see the group’s live chemical inventory.'
+                : 'Create a local demo account to explore this copy of the inventory.'}
           </p>
 
-          <div className="mt-6 grid grid-cols-2 gap-1 rounded-lg bg-ink-100 p-1 dark:bg-ink-800">
-            {(['signin', 'signup'] as Tab[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => switchTab(t)}
-                className={cx(
-                  'rounded-md px-3 py-1.5 text-sm font-semibold transition-colors',
-                  tab === t
-                    ? 'bg-white text-ink-900 shadow-sm dark:bg-ink-900 dark:text-ink-50'
-                    : 'text-ink-500 hover:text-ink-700 dark:hover:text-ink-300',
-                )}
-              >
-                {t === 'signin' ? 'Sign in' : 'Sign up'}
-              </button>
-            ))}
-          </div>
-
-          {showMagicLinkOption && (
-            <div className="mt-5 mb-4 grid grid-cols-2 gap-1 rounded-lg border border-ink-200 p-1 text-xs dark:border-ink-700">
-              <button
-                type="button"
-                onClick={() => {
-                  setMethod('magic')
-                  setError(null)
-                  setNotice(null)
-                  setLinkSent(false)
-                }}
-                className={cx(
-                  'flex items-center justify-center gap-1.5 rounded-md py-1.5 font-semibold transition-colors',
-                  method === 'magic'
-                    ? 'bg-pearl-600 text-white'
-                    : 'text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-800',
-                )}
-              >
-                <MailCheck className="h-3.5 w-3.5" /> Email link
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMethod('password')
-                  setError(null)
-                  setNotice(null)
-                }}
-                className={cx(
-                  'flex items-center justify-center gap-1.5 rounded-md py-1.5 font-semibold transition-colors',
-                  method === 'password'
-                    ? 'bg-pearl-600 text-white'
-                    : 'text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-800',
-                )}
-              >
-                <KeyRound className="h-3.5 w-3.5" /> Password
-              </button>
+          {MODE === 'demo' && (
+            <div className="mt-6 grid grid-cols-2 gap-1 rounded-lg bg-ink-100 p-1 dark:bg-ink-800">
+              {(['signin', 'signup'] as Tab[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => switchTab(t)}
+                  className={cx(
+                    'rounded-md px-3 py-1.5 text-sm font-semibold transition-colors',
+                    tab === t
+                      ? 'bg-white text-ink-900 shadow-sm dark:bg-ink-900 dark:text-ink-50'
+                      : 'text-ink-500 hover:text-ink-700 dark:hover:text-ink-300',
+                  )}
+                >
+                  {t === 'signin' ? 'Sign in' : 'Sign up'}
+                </button>
+              ))}
             </div>
           )}
 
           {/* ---------------------------------------------------- magic link */}
-          {method === 'magic' && showMagicLinkOption ? (
+          {method === 'magic' && MODE === 'cloud' ? (
             linkSent ? (
-              <div className="rounded-xl border border-pearl-200 bg-pearl-50 p-4 text-sm dark:border-pearl-500/30 dark:bg-pearl-500/10">
+              <div className="mt-6 rounded-xl border border-pearl-200 bg-pearl-50 p-4 text-sm dark:border-pearl-500/30 dark:bg-pearl-500/10">
                 <div className="flex items-center gap-2 font-semibold text-pearl-900 dark:text-pearl-100">
                   <MailCheck className="h-4 w-4" /> Check your inbox
                 </div>
                 <p className="mt-1.5 leading-relaxed text-pearl-800 dark:text-pearl-100/80">
-                  We sent a sign-in link to <strong>{email}</strong>. Open it on this device and
-                  you're in — no password needed. The link expires after an hour.
+                  We sent a six-digit sign-in code to <strong>{email}</strong>. Enter it below.
+                  The code expires after an hour.
                 </p>
 
-                {useCode ? (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault()
-                      void verifyCode()
-                    }}
-                    className="mt-3 space-y-2.5"
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void verifyCode()
+                  }}
+                  className="mt-4 space-y-2.5"
+                >
+                  <label
+                    htmlFor="email-code"
+                    className="block text-xs font-semibold uppercase tracking-wide text-pearl-800 dark:text-pearl-200"
                   >
-                    <p className="leading-relaxed text-pearl-800 dark:text-pearl-100/80">
-                      The same email also has a 6-digit code — use it if the link doesn't work
-                      (some institutional email gateways open links automatically to scan them,
-                      which uses them up before you click).
-                    </p>
-                    <input
-                      className="input"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      placeholder="123456"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                      autoFocus
-                    />
-                    <button type="submit" className="btn-primary w-full" disabled={verifyingCode}>
-                      {verifyingCode ? <Spinner /> : <KeyRound className="h-4 w-4" />} Verify code
-                    </button>
-                  </form>
-                ) : (
+                    Six-digit code
+                  </label>
+                  <input
+                    id="email-code"
+                    className="input text-center font-mono text-lg tracking-[0.35em]"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    autoFocus
+                  />
+                  {error && <ErrorBanner message={error} />}
+                  <button
+                    type="submit"
+                    className="btn-primary w-full"
+                    disabled={verifyingCode || code.length !== 6}
+                  >
+                    {verifyingCode ? <Spinner /> : <KeyRound className="h-4 w-4" />} Continue
+                  </button>
+                </form>
+
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                   <button
                     type="button"
-                    className="mt-3 text-xs font-semibold text-pearl-700 underline dark:text-pearl-300"
-                    onClick={() => setUseCode(true)}
+                    className="text-xs font-semibold text-pearl-700 underline disabled:opacity-50 dark:text-pearl-300"
+                    disabled={busy || sendCooldown.secondsLeft('magic-link') > 0}
+                    onClick={() => void sendMagicLink()}
                   >
-                    Link not working? Enter the code from the email instead
+                    {sendCooldown.secondsLeft('magic-link') > 0
+                      ? `Resend in ${sendCooldown.secondsLeft('magic-link')}s`
+                      : 'Resend email'}
                   </button>
-                )}
-
-                <button
-                  className="mt-3 block text-xs font-semibold text-pearl-700 underline dark:text-pearl-300"
-                  onClick={() => {
-                    setLinkSent(false)
-                    setUseCode(false)
-                    setCode('')
-                  }}
-                >
-                  Use a different email
-                </button>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-pearl-700 underline dark:text-pearl-300"
+                    onClick={() => {
+                      setLinkSent(false)
+                      setCode('')
+                      setError(null)
+                    }}
+                  >
+                    Use a different email
+                  </button>
+                </div>
               </div>
             ) : (
-              <form onSubmit={onSubmitMagicLink} className="space-y-4">
-                {tab === 'signup' && (
-                  <Field label="Full name" required hint="Shown next to entries you register.">
-                    <div className="relative">
-                      <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-                      <input
-                        className="input pl-9"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        placeholder="Dr. Takuya Tanaka"
-                        autoComplete="name"
-                      />
-                    </div>
-                  </Field>
-                )}
+              <form onSubmit={onSubmitMagicLink} className="mt-6 space-y-4">
                 <Field
                   label="Email"
                   required
-                  hint={
-                    tab === 'signup' && ALLOWED_EMAIL_DOMAINS.length > 0
-                      ? `Use your ${ALLOWED_EMAIL_DOMAINS[0]} address.`
-                      : 'We’ll email you a one-click sign-in link.'
-                  }
+                  hint="We’ll email you a six-digit, one-time sign-in code."
                 >
                   <div className="relative">
                     <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
@@ -433,58 +388,43 @@ export default function LoginPage() {
                   </div>
                 </Field>
 
-                {useCode && (
-                  <Field label="Code from a previous email" hint="Already have one? Skip sending a new link.">
-                    <input
-                      className="input"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      placeholder="123456"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                    />
-                  </Field>
-                )}
-
                 {error && <ErrorBanner message={error} />}
                 {notice && <NoticeBanner message={notice} />}
 
-                {useCode ? (
-                  <button
-                    type="button"
-                    className="btn-primary w-full"
-                    disabled={verifyingCode}
-                    onClick={() => void verifyCode()}
-                  >
-                    {verifyingCode ? <Spinner /> : <KeyRound className="h-4 w-4" />} Verify code
-                  </button>
-                ) : (
-                  <SpecularButton
-                    type="submit"
-                    className="w-full"
-                    size="md"
-                    disabled={busy || sendCooldown.secondsLeft('magic-link') > 0}
-                    {...BRAND_SHINE}
-                  >
-                    {busy ? <Spinner /> : <MailCheck className="h-4 w-4" />}
-                    {sendCooldown.secondsLeft('magic-link') > 0
-                      ? `Wait ${sendCooldown.secondsLeft('magic-link')}s before sending another`
-                      : 'Send me a sign-in link'}
-                  </SpecularButton>
-                )}
+                <SpecularButton
+                  type="submit"
+                  className="w-full"
+                  size="md"
+                  disabled={busy || sendCooldown.secondsLeft('magic-link') > 0}
+                  {...BRAND_SHINE}
+                >
+                  {busy ? <Spinner /> : <MailCheck className="h-4 w-4" />}
+                  {sendCooldown.secondsLeft('magic-link') > 0
+                    ? `Wait ${sendCooldown.secondsLeft('magic-link')}s`
+                    : 'Continue with email'}
+                </SpecularButton>
 
                 <button
                   type="button"
                   className="w-full text-center text-xs font-medium text-ink-500 hover:text-pearl-700 dark:hover:text-pearl-400"
-                  onClick={() => setUseCode((v) => !v)}
+                  onClick={() => {
+                    setMethod('password')
+                    setError(null)
+                    setNotice(null)
+                  }}
                 >
-                  {useCode ? 'Send a new link instead' : 'Already have a code? Enter it here'}
+                  <span className="inline-flex items-center gap-1.5">
+                    <Lock className="h-3.5 w-3.5" /> Use password instead
+                  </span>
                 </button>
               </form>
             )
           ) : (
             /* -------------------------------------------------- password --- */
-            <form onSubmit={onSubmitPassword} className="space-y-4">
+            <form
+              onSubmit={onSubmitPassword}
+              className={cx('space-y-4', MODE === 'cloud' && 'mt-6')}
+            >
               {tab === 'signup' && (
                 <Field label="Full name" required hint="Shown next to entries you register.">
                   <div className="relative">
@@ -560,13 +500,28 @@ export default function LoginPage() {
               </SpecularButton>
 
               {tab === 'signin' && MODE === 'cloud' && (
-                <button
-                  type="button"
-                  onClick={() => void onForgotPassword()}
-                  className="w-full text-center text-xs font-medium text-ink-500 hover:text-pearl-700 dark:hover:text-pearl-400"
-                >
-                  Forgot your password?
-                </button>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => void onForgotPassword()}
+                    className="w-full text-center text-xs font-medium text-ink-500 hover:text-pearl-700 dark:hover:text-pearl-400"
+                  >
+                    Forgot your password?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMethod('magic')
+                      setError(null)
+                      setNotice(null)
+                    }}
+                    className="w-full text-center text-xs font-medium text-ink-500 hover:text-pearl-700 dark:hover:text-pearl-400"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <MailCheck className="h-3.5 w-3.5" /> Use email code instead
+                    </span>
+                  </button>
+                </div>
               )}
             </form>
           )}
@@ -613,4 +568,3 @@ function NoticeBanner({ message }: { message: string }) {
     </div>
   )
 }
-

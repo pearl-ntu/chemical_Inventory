@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Your PEARL sign-in code</title>
+  </head>
+  <body style="margin:0;background:#f4f6fa;color:#1f2937;font-family:Inter,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+      Use this one-time code to continue to PEARL Inventory.
+    </div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6fa;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table
+            role="presentation"
+            width="100%"
+            cellspacing="0"
+            cellpadding="0"
+            style="max-width:560px;background:#ffffff;border:1px solid #dbe2ee;border-radius:16px;overflow:hidden;"
+          >
+            <tr>
+              <td style="background:#0b1830;padding:24px 32px;color:#ffffff;">
+                <div style="font-size:22px;font-weight:800;letter-spacing:-0.02em;">PEARL</div>
+                <div style="margin-top:2px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#b8d1ff;">
+                  Research Group Inventory
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;">
+                <h1 style="margin:0;font-size:24px;line-height:1.25;color:#12151c;">Sign in to PEARL</h1>
+                <p style="margin:12px 0 0;font-size:15px;line-height:1.6;color:#505f7a;">
+                  Enter this one-time code in the PEARL Inventory sign-in screen:
+                </p>
+
+                <div
+                  style="margin:24px 0;padding:18px 16px;border:1px solid #b8d1ff;border-radius:12px;background:#eef4ff;text-align:center;font-family:Menlo,Consolas,monospace;font-size:30px;font-weight:700;letter-spacing:0.22em;color:#1c44ab;"
+                >
+                  {{ .Token }}
+                </div>
+
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#657794;">
+                  This code is single-use and expires shortly. Return to the PEARL Inventory sign-in screen,
+                  enter the code, and choose Continue.
+                </p>
+
+                <p style="margin:24px 0 0;font-size:12px;line-height:1.6;color:#8595ae;">
+                  This sign-in was requested for {{ .Email }}. If you did not request it, you can safely ignore
+                  this email. Never forward this code to anyone.
+                </p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0;font-size:11px;color:#8595ae;">
+            Photon Emission &amp; Reactivity Lab · Nanyang Technological University
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

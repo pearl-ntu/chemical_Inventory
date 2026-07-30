@@ -35,7 +35,6 @@ import PiProjectDetailPage from './pages/PiProjectDetailPage'
 import PiProjectsPage from './pages/PiProjectsPage'
 import ProjectMapPage from './pages/ProjectMapPage'
 import ResearchAssetsPage from './pages/ResearchAssetsPage'
-import SetPasswordPage from './pages/SetPasswordPage'
 import SettingsPage from './pages/SettingsPage'
 import StocktakePage from './pages/StocktakePage'
 
@@ -68,10 +67,6 @@ export default function App() {
       </Suspense>
     )
   }
-
-  // A magic-link/invite sign-in with no password set yet — one-time detour
-  // before anything else, so the email link isn't the only way back in.
-  if (!profile.has_password) return <SetPasswordPage />
 
   // Signed in, but not let in yet — don't even mount the inventory shell:
   // every query it would make is blocked by RLS anyway, so there's nothing
