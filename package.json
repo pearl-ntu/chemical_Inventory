@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
+    "jsqr": "^1.4.0",
     "lucide-react": "^0.451.0",
     "ogl": "^1.0.11",
     "openchemlib": "^9.24.0",

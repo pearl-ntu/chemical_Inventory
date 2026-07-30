@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, BookMarked, Check, Database, Link2, ListChecks, Plus, Server, Tags } from 'lucide-react'
 import { BarList, Timeline } from '../components/charts'
 import { PageHeader } from '../components/Layout'
+import { ProjectUpdateWidget } from '../components/ProjectUpdateWidget'
 import { EmptyState, LoadingScreen } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
@@ -139,6 +140,10 @@ export default function ComputationalDashboardPage() {
         <Kpi label="Datasets" value={stats.datasets.length} sub="metadata pointers" />
         <Kpi label="Simulations" value={stats.simulations.length} sub={`${stats.runningJobs.length} running, ${stats.failedJobs.length} failed`} tone={stats.failedJobs.length ? 'warning' : 'default'} />
         <Kpi label="Needs attention" value={stats.attention.length} sub="cleanup queue" tone={stats.attention.length ? 'warning' : 'good'} />
+      </div>
+
+      <div className="mt-4">
+        <ProjectUpdateWidget workspace="computational" />
       </div>
 
       <section className="mt-4">

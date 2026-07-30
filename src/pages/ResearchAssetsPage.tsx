@@ -1063,23 +1063,40 @@ export default function ResearchAssetsPage() {
                 <p className="text-sm text-ink-500">No versions recorded yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {versionsByAsset.get(detail.id)?.map((version) => (
-                    <div key={version.id} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{version.version_number}</p>
-                          <p className="mt-1 text-xs text-ink-500">{formatDate(version.created_at)}{version.size_label || formatBytes(version.size_bytes) ? ` - ${version.size_label ?? formatBytes(version.size_bytes)}` : ''}</p>
-                          {version.external_path && <p className="mt-1 break-all font-mono text-xs text-ink-500">{version.external_path}</p>}
-                          {version.notes && <p className="mt-2 text-sm text-ink-700 dark:text-ink-300">{version.notes}</p>}
+                  {versionsByAsset.get(detail.id)?.map((version, i, arr) => {
+                    // Array is newest-first, so the previous version chronologically is the next entry.
+                    const prev = arr[i + 1]
+                    const changed: string[] = []
+                    if (prev) {
+                      if (prev.checksum !== version.checksum) changed.push('checksum')
+                      if (prev.size_bytes !== version.size_bytes || prev.size_label !== version.size_label) changed.push('size')
+                      if (prev.external_path !== version.external_path) changed.push('path')
+                    }
+                    return (
+                      <div key={version.id} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{version.version_number}</p>
+                            <p className="mt-1 text-xs text-ink-500">{formatDate(version.created_at)}{version.size_label || formatBytes(version.size_bytes) ? ` - ${version.size_label ?? formatBytes(version.size_bytes)}` : ''}</p>
+                            {version.external_path && <p className="mt-1 break-all font-mono text-xs text-ink-500">{version.external_path}</p>}
+                            {version.notes && <p className="mt-2 text-sm text-ink-700 dark:text-ink-300">{version.notes}</p>}
+                            {prev && (
+                              <p className="mt-1.5 text-xs text-ink-400">
+                                {changed.length === 0
+                                  ? `No change in checksum/size/path since ${prev.version_number}`
+                                  : `Changed since ${prev.version_number}: ${changed.join(', ')}`}
+                              </p>
+                            )}
+                          </div>
+                          {canEdit && (
+                            <button className="btn-ghost py-1.5 text-xs text-rose-600" onClick={() => void removeVersion(version)} title="Remove this PEARL version metadata only">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
-                        {canEdit && (
-                          <button className="btn-ghost py-1.5 text-xs text-rose-600" onClick={() => void removeVersion(version)} title="Remove this PEARL version metadata only">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </section>

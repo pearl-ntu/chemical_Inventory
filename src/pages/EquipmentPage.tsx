@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarPlus, Microscope, Plus } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { BookOpen, CalendarPlus, Microscope, Plus } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { Field, LoadingScreen, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -145,8 +146,15 @@ export default function EquipmentPage() {
             <div className="space-y-2">
               {equipment.length === 0 ? <p className="text-sm text-ink-500">No equipment registered yet.</p> : equipment.map((item) => (
                 <div key={item.id} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
-                  <p className="font-semibold text-ink-900 dark:text-ink-50">{item.name}</p>
-                  <p className="text-xs text-ink-500">{item.location || 'No location'}{item.notes ? ` - ${item.notes}` : ''}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-ink-900 dark:text-ink-50">{item.name}</p>
+                      <p className="text-xs text-ink-500">{item.location || 'No location'}{item.notes ? ` - ${item.notes}` : ''}</p>
+                    </div>
+                    <Link to={`/sops?equipment=${item.id}`} className="btn-ghost shrink-0 py-1 text-xs">
+                      <BookOpen className="h-3.5 w-3.5" /> SOPs
+                    </Link>
+                  </div>
                 </div>
               ))}
             </div>

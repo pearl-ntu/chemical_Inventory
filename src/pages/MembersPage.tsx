@@ -26,7 +26,7 @@ const AVATAR_CHOICES = [
 ]
 
 export default function MembersPage() {
-  const { profile, isAdmin } = useAuth()
+  const { profile, isAdmin, isPi } = useAuth()
   const toast = useToast()
 
   const [members, setMembers] = useState<Profile[]>([])
@@ -183,6 +183,21 @@ export default function MembersPage() {
       toast.success('Access level updated.')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not change that role.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  async function togglePi(target: Profile) {
+    if (!profile) return
+    const next = !target.is_pi
+    setSaving(target.id)
+    try {
+      await api.setPiFlag(target, next, profile)
+      setMembers((prev) => prev.map((m) => (m.id === target.id ? { ...m, is_pi: next } : m)))
+      toast.success(next ? `${target.full_name} is now PI.` : `${target.full_name} is no longer PI.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update the PI flag.')
     } finally {
       setSaving(null)
     }
@@ -645,7 +660,15 @@ export default function MembersPage() {
                       </button>
                     )}
                   </div>
-                  <div className="relative">
+                  <div className="relative flex items-center gap-1.5">
+                    {m.is_pi && (
+                      <span
+                        className="badge shrink-0 bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300"
+                        title="Has the PI oversight dashboard, on top of their role"
+                      >
+                        PI
+                      </span>
+                    )}
                     <button
                       type="button"
                       className={`${roleBadgeClass(m.role)} h-7 w-full justify-between px-2.5 capitalize ${isLastAdmin ? 'cursor-not-allowed opacity-60' : 'hover:ring-pearl-500/40'}`}
@@ -722,6 +745,14 @@ export default function MembersPage() {
                           disabled={saving === m.id || isLastAdmin}
                           onClick={() => { setActionMenuFor(null); setConfirm({ kind: 'revoke', member: m }) }}
                         />
+                        {isPi && (
+                          <MenuAction
+                            icon={<ShieldCheck className="h-3.5 w-3.5" />}
+                            label={m.is_pi ? 'Remove PI access' : 'Make PI'}
+                            disabled={saving === m.id}
+                            onClick={() => { setActionMenuFor(null); void togglePi(m) }}
+                          />
+                        )}
                         <MenuAction
                           icon={<UserCheck className="h-3.5 w-3.5" />}
                           label="Offboard"

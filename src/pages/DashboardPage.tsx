@@ -16,6 +16,8 @@ import { ChemicalDrawer } from '../components/ChemicalDrawer'
 import { ChemicalForm } from '../components/ChemicalForm'
 import { BarList, Donut, Timeline } from '../components/charts'
 import { PageHeader } from '../components/Layout'
+import { ProjectUpdateWidget } from '../components/ProjectUpdateWidget'
+import { MyDayPanel } from '../components/MyDayPanel'
 import { EmptyState, LoadingScreen, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
@@ -298,9 +300,13 @@ export default function DashboardPage() {
         }
       />
 
+      <div className="mt-4 animate-slide-up" style={stagger(0)}>
+        <MyDayPanel />
+      </div>
+
       {/* attention banner — the single "what do I actually need to do" line */}
       {/* KPI strip — one bordered surface, five equal columns, never wraps */}
-      <div className="mt-4 animate-slide-up" style={stagger(0)}>
+      <div className="mt-4 animate-slide-up" style={stagger(0.5)}>
         <div className="card grid grid-cols-2 divide-y divide-ink-100 p-0 sm:grid-cols-3 sm:divide-x sm:divide-y-0 xl:grid-cols-5 dark:divide-ink-800">
           <Kpi
             label="In stock"
@@ -534,6 +540,11 @@ export default function DashboardPage() {
                 )}
               </div>
             </section>
+          </div>
+
+          {/* project updates --------------------------------------------------- */}
+          <div className="mt-4 animate-slide-up" style={stagger(3.5)}>
+            <ProjectUpdateWidget workspace="experimental" />
           </div>
 
           {/* attention table -------------------------------------------------- */}

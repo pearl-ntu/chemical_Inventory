@@ -4,6 +4,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cx } from '../lib/utils'
 
@@ -17,6 +18,37 @@ export function LoadingScreen({ label = 'Loading…' }: { label?: string }) {
     <div className="flex h-full min-h-[50vh] flex-col items-center justify-center gap-3 text-ink-500">
       <Spinner className="h-6 w-6" />
       <p className="text-sm">{label}</p>
+    </div>
+  )
+}
+
+/** A shaped placeholder block, for pages that pull from several queries at
+ *  once (Analytics, PI Console) where a bare spinner leaves the eye with
+ *  nothing to anchor on while everything loads together. */
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cx('animate-pulse rounded-lg bg-ink-100 dark:bg-ink-800', className)} aria-hidden />
+}
+
+/** A skeleton shaped like this app's usual KPI-strip + table layout —
+ *  matches what most multi-query dashboard pages actually render once
+ *  loaded, so the loading state doesn't visually jump around. */
+export function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="card grid grid-cols-2 gap-px divide-y divide-ink-100 p-0 sm:grid-cols-4 sm:divide-x sm:divide-y-0 dark:divide-ink-800">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="space-y-2 p-4">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-6 w-10" />
+          </div>
+        ))}
+      </div>
+      <div className="card space-y-2 p-4">
+        <Skeleton className="mb-2 h-4 w-32" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-4 w-full" />
+        ))}
+      </div>
     </div>
   )
 }
@@ -94,7 +126,12 @@ export function Modal({
     xl: 'max-w-5xl',
   }[size]
 
-  return (
+  // Rendered via a portal straight onto <body> — a `fixed` element nested
+  // inside any ancestor with a filter/backdrop-blur/transform (the app's
+  // header uses backdrop-blur) gets contained by that ancestor instead of
+  // the viewport, which is exactly the "modal renders squashed into the
+  // header" bug a plain in-tree `fixed` div runs into.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div
         className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm animate-fade-in"
@@ -128,7 +165,8 @@ export function Modal({
           </footer>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

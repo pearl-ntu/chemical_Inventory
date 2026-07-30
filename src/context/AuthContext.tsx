@@ -18,6 +18,8 @@ interface AuthState {
   /** True for approved admins and members; false for viewers, unapproved accounts, and signed-out visitors. */
   canEdit: boolean
   isAdmin: boolean
+  /** The PI oversight flag — layered on top of `role`, see supabase/upgrade_pi_oversight.sql. */
+  isPi: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (
     email: string,
@@ -59,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isApproved: profile?.approved === true,
       canEdit: profile?.approved === true && (profile?.role === 'admin' || profile?.role === 'member'),
       isAdmin: profile?.approved === true && profile?.role === 'admin',
+      isPi: profile?.approved === true && profile?.is_pi === true,
       async signIn(email, password) {
         setProfile(await auth.signIn(email, password))
       },

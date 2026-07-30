@@ -1,8 +1,11 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Beaker, CheckCircle2, ExternalLink, PenTool, Search, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { DeliveryPhotoPanel } from './DeliveryPhotoPanel'
+import { DocumentField } from './DocumentField'
 import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
+import { api, type SdsLookupResult } from '../lib/api'
+import { IS_CLOUD } from '../lib/config'
 import { hazardHint } from '../lib/hazardHints'
 import * as pubchem from '../lib/pubchem'
 import { HAZARDS, SIZE_UNITS, STATUSES, STATUS_LABEL, type Chemical, type ChemicalInput } from '../lib/types'
@@ -155,6 +158,8 @@ export function ChemicalForm({
   const [reactionOpen, setReactionOpen] = useState(false)
   const [structuralDuplicate, setStructuralDuplicate] = useState<Chemical | null>(null)
   const [enrichedInfo, setEnrichedInfo] = useState<pubchem.PubChemInfo | null>(null)
+  const [sdsLooking, setSdsLooking] = useState(false)
+  const [sdsResult, setSdsResult] = useState<SdsLookupResult | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -207,6 +212,28 @@ export function ChemicalForm({
 
   function set<K extends keyof ChemicalInput>(key: K, value: ChemicalInput[K]) {
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  async function lookupSds() {
+    const cas = form.cas?.trim()
+    if (!cas || !casCheck.ok) {
+      toast.error('Enter a valid CAS number first.')
+      return
+    }
+    setSdsLooking(true)
+    setSdsResult(null)
+    try {
+      const result = await api.lookupSds(cas)
+      if (!result.pubchemUrl && result.candidates.length === 0) {
+        toast.info('No SDS candidates found for that CAS number — try pasting a link or attaching a file.')
+        return
+      }
+      setSdsResult(result)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'SDS lookup failed.')
+    } finally {
+      setSdsLooking(false)
+    }
   }
 
   function resetDraft() {
@@ -733,30 +760,77 @@ export function ChemicalForm({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="SDS link">
-              <input
-                className="input"
-                value={form.sds_url ?? ''}
-                onChange={(e) => set('sds_url', e.target.value || null)}
-                placeholder="https://..."
+            <div>
+              <DocumentField
+                label="SDS"
+                kind="sds"
+                value={form.sds_url}
+                onChange={(v) => set('sds_url', v)}
+                placeholder="https://... or attach a file"
               />
-            </Field>
-            <Field label="CoA link">
-              <input
-                className="input"
-                value={form.coa_url ?? ''}
-                onChange={(e) => set('coa_url', e.target.value || null)}
-                placeholder="Certificate link"
-              />
-            </Field>
-            <Field label="Invoice / DO link">
-              <input
-                className="input"
-                value={form.invoice_url ?? ''}
-                onChange={(e) => set('invoice_url', e.target.value || null)}
-                placeholder="Delivery order or invoice"
-              />
-            </Field>
+              {IS_CLOUD && !form.sds_url && (
+                <button
+                  type="button"
+                  className="btn-ghost mt-1 py-1 text-xs text-pearl-700 dark:text-pearl-300"
+                  disabled={sdsLooking || !form.cas || !casCheck.ok}
+                  onClick={() => void lookupSds()}
+                  title="Best-effort lookup by CAS number via PubChem — nothing is filled in until you pick a result."
+                >
+                  {sdsLooking ? <Spinner className="h-3.5 w-3.5" /> : <Search className="h-3.5 w-3.5" />}
+                  {sdsLooking ? 'Looking up…' : 'Look up SDS by CAS'}
+                </button>
+              )}
+              {sdsResult && (
+                <div className="mt-1.5 space-y-1 rounded-lg border border-pearl-200 bg-pearl-50/60 p-2 text-xs dark:border-pearl-500/30 dark:bg-pearl-500/5">
+                  {sdsResult.pubchemUrl && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-1.5 truncate rounded px-1 py-0.5 text-left text-pearl-800 hover:bg-white/70 dark:text-pearl-100 dark:hover:bg-ink-900/40"
+                      onClick={() => {
+                        set('sds_url', sdsResult.pubchemUrl)
+                        setSdsResult(null)
+                      }}
+                    >
+                      <ExternalLink className="h-3 w-3 shrink-0" /> PubChem Safety &amp; Hazards (CID {sdsResult.cid})
+                    </button>
+                  )}
+                  {sdsResult.candidates.map((c) => (
+                    <button
+                      key={c.url}
+                      type="button"
+                      className="flex w-full items-center gap-1.5 truncate rounded px-1 py-0.5 text-left text-pearl-800 hover:bg-white/70 dark:text-pearl-100 dark:hover:bg-ink-900/40"
+                      onClick={() => {
+                        set('sds_url', c.url)
+                        setSdsResult(null)
+                      }}
+                    >
+                      <ExternalLink className="h-3 w-3 shrink-0" /> {c.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="text-ink-400 hover:text-ink-600"
+                    onClick={() => setSdsResult(null)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
+            <DocumentField
+              label="CoA"
+              kind="coa"
+              value={form.coa_url}
+              onChange={(v) => set('coa_url', v)}
+              placeholder="Certificate link or attach a file"
+            />
+            <DocumentField
+              label="Invoice / DO"
+              kind="invoice"
+              value={form.invoice_url}
+              onChange={(v) => set('invoice_url', v)}
+              placeholder="Delivery order/invoice link or attach a file"
+            />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">

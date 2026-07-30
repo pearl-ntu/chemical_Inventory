@@ -1,62 +1,30 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Activity,
-  BarChart3,
-  BookMarked,
-  BookOpen,
-  Bot,
   ChevronDown,
-  ClipboardList,
+  ChevronsUpDown,
   Database,
-  ListChecks,
-  GitBranch,
   FlaskConical,
-  LayoutDashboard,
   LogOut,
-  MapPin,
   Menu,
+  MessageSquare,
   Minus,
   Moon,
   Plus,
-  QrCode,
   Settings,
-  Server,
+  ShieldCheck,
   Sun,
   Users,
   X,
-  Microscope,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { MODE, LAB_SUBTITLE } from '../lib/config'
+import { COMPUTATIONAL_NAV, NAV } from '../lib/nav'
 import { cx } from '../lib/utils'
 import { AskPearl } from './AskPearl'
+import { CommandPalette } from './CommandPalette'
 import { NtuBadge, Wordmark } from './Logo'
-
-const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/inventory', label: 'Inventory', icon: FlaskConical, end: false },
-  { to: '/locations', label: 'Locations', icon: MapPin, end: false },
-  { to: '/project-map', label: 'Project Map', icon: GitBranch, end: false },
-  { to: '/operations', label: 'Operations', icon: ClipboardList, end: false },
-  { to: '/equipment', label: 'Equipment', icon: Microscope, end: false },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3, end: false },
-  { to: '/activity', label: 'Activity', icon: Activity, end: false },
-  { to: '/labels', label: 'QR labels', icon: QrCode, end: false },
-]
-
-const COMPUTATIONAL_NAV = [
-  { to: '/computational', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/computational/workbench', label: 'Workbench', icon: Bot, end: false },
-  { to: '/computational/protocols', label: 'Method Library', icon: BookMarked, end: false },
-  { to: '/research-assets', label: 'Research Assets', icon: Database, end: false },
-  { to: '/computational/project-map', label: 'Project Map', icon: GitBranch, end: false },
-  { to: '/computational/jobs', label: 'Job Monitor', icon: ListChecks, end: false },
-  { to: '/computational/hpc-sync', label: 'Linux/HPC Sync', icon: Server, end: false },
-  { to: '/computational/hpc-tutorial', label: 'HPC Tutorial', icon: BookOpen, end: false },
-  { to: '/computational/analytics', label: 'Analytics', icon: BarChart3, end: false },
-  { to: '/computational/activity', label: 'Activity', icon: Activity, end: false },
-]
+import { NotificationBell } from './NotificationBell'
 
 type WorkspaceMode = 'experimental' | 'computational'
 type SidebarWidth = 'compact' | 'comfortable' | 'wide'
@@ -166,7 +134,7 @@ function useTheme() {
   return { dark, toggle: () => setDark((d) => !d) }
 }
 
-function ThemeToggle() {
+export function ThemeToggle() {
   const { dark, toggle } = useTheme()
   return (
     <button
@@ -320,7 +288,7 @@ function SidebarContent({
   onNavigate?: () => void
   showWorkspaceSwitch?: boolean
 }) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, isPi } = useAuth()
   const location = useLocation()
   const mode = workspaceFromPath(location.pathname)
   const links = mode === 'computational' ? COMPUTATIONAL_NAV : NAV
@@ -349,6 +317,22 @@ function SidebarContent({
         ))}
       </nav>
       <div className="space-y-1 border-t border-ink-200 px-3 py-3 dark:border-ink-800">
+        {isPi && (
+          <NavLink
+            to="/pi-dashboard"
+            onClick={onNavigate}
+            className={({ isActive }) => cx('nav-link', isActive && 'nav-link-active')}
+          >
+            <ShieldCheck className="h-4 w-4" /> PI Dashboard
+          </NavLink>
+        )}
+        <NavLink
+          to="/feed"
+          onClick={onNavigate}
+          className={({ isActive }) => cx('nav-link', isActive && 'nav-link-active')}
+        >
+          <MessageSquare className="h-4 w-4" /> Feed
+        </NavLink>
         {isAdmin && (
           <NavLink
             to="/members"
@@ -395,8 +379,23 @@ export function DemoBanner() {
 export function AppShell({ children }: { children?: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState<SidebarWidth>(() => storedSidebarWidth())
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
+
+  // ⌘K / Ctrl+K opens the command palette from anywhere, even mid-typing —
+  // the one shortcut in this app that deliberately isn't suppressed while a
+  // field has focus, same as every other app that ships one.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -469,9 +468,16 @@ export function AppShell({ children }: { children?: ReactNode }) {
           </div>
           <SidebarWidthControl value={sidebarWidth} onChange={setSidebarWidth} />
           <div className="flex-1" />
-          <span className="hidden rounded-md border border-ink-200 px-2 py-1 text-[11px] text-ink-400 md:block dark:border-ink-700">
-            Press <kbd className="font-mono font-semibold">/</kbd> to search
-          </span>
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="hidden items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs text-ink-500 transition-colors hover:border-pearl-300 hover:text-pearl-700 md:flex dark:border-ink-700 dark:text-ink-400 dark:hover:border-pearl-500/40 dark:hover:text-pearl-300"
+          >
+            <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
+            <span>Jump to…</span>
+            <kbd className="ml-1 rounded border border-ink-200 px-1 font-mono text-[10px] dark:border-ink-700">⌘K</kbd>
+          </button>
+          <NotificationBell />
           <ThemeToggle />
           <UserMenu />
         </header>
@@ -498,6 +504,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
         </main>
       </div>
       <AskPearl />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   )
 }

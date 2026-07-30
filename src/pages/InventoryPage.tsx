@@ -1,7 +1,8 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowDownUp,
+  Camera,
   ChevronLeft,
   ChevronRight,
   CircleSlash,
@@ -267,6 +268,9 @@ export default function InventoryPage() {
         }`}
         actions={
           <>
+            <Link to="/stocktake" className="btn-secondary">
+              <Camera className="h-4 w-4" /> Stocktake
+            </Link>
             <button className="btn-secondary" onClick={exportCSV}>
               <Download className="h-4 w-4" />
               Export{selected.size > 0 ? ` (${selected.size})` : ''}

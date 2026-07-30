@@ -12,7 +12,9 @@ import { supabase, requireSupabase } from './supabase'
 import type {
   ActivityAction,
   ActivityEntry,
+  AppNotification,
   Chemical,
+  ChemicalHistoryEntry,
   ChemicalInput,
   ChemicalRequest,
   ChemicalRequestInput,
@@ -28,6 +30,14 @@ import type {
   OffboardingItem,
   OwnershipTransferInput,
   Profile,
+  PiNote,
+  Project,
+  ProjectMember,
+  ProjectMilestone,
+  ProjectMilestoneInput,
+  ProjectUpdate,
+  ProjectUpdateInput,
+  ProjectWorkspace,
   ResearchAsset,
   ResearchAssetChemicalLink,
   ResearchAssetInput,
@@ -35,7 +45,14 @@ import type {
   ResearchAssetLinkInput,
   ResearchAssetVersion,
   ResearchAssetVersionInput,
+  FeedPost,
+  FeedPostInput,
+  FeedPostLike,
+  IncidentReport,
+  IncidentReportInput,
   Role,
+  Sop,
+  SopInput,
 } from './types'
 import { nextCode } from './utils'
 
@@ -58,6 +75,19 @@ function missingTable(error: { message?: string; code?: string } | null): boolea
     error?.code === '42P01' ||
     /Could not find the table|relation .* does not exist/i.test(error?.message ?? '')
   )
+}
+
+/** Shared @mention matching — same regex approach used for project comments,
+ *  reused here for feed posts rather than duplicating the pattern. */
+function matchMentionedMembers(rows: Array<{ id: string; full_name: string }>, body: string, excludeId: string): string[] {
+  const ids: string[] = []
+  for (const row of rows) {
+    if (row.id === excludeId) continue
+    if (row.full_name && new RegExp(`@${row.full_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(body)) {
+      ids.push(row.id)
+    }
+  }
+  return ids
 }
 
 function nextStableId(rows: Array<{ stable_id: string | null }>): string {
@@ -133,15 +163,15 @@ function projectRollup(items: OffboardingItem[]): MemberOffboardingSummary['proj
   return [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
 }
 
-async function invokeAskPearl(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function invokeEdgeFunction(name: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const sb = requireSupabase()
   await sb.auth.refreshSession().catch(() => null)
   const { data: userData, error: userError } = await sb.auth.getUser()
-  if (userError || !userData.user) throw new ApiError('This AI action needs a fresh sign-in session.')
+  if (userError || !userData.user) throw new ApiError('This action needs a fresh sign-in session.')
   const { data: sessionData } = await sb.auth.getSession()
   const token = sessionData.session?.access_token
-  if (!token) throw new ApiError('This AI action needs a signed-in session.')
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/ask-pearl`, {
+  if (!token) throw new ApiError('This action needs a signed-in session.')
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${token}`,
@@ -151,8 +181,18 @@ async function invokeAskPearl(body: Record<string, unknown>): Promise<Record<str
     body: JSON.stringify(body),
   })
   const data = await res.json().catch(() => null)
-  if (!res.ok) throw new ApiError(data?.error ?? data?.message ?? `AI action failed with HTTP ${res.status}.`)
+  if (!res.ok) throw new ApiError(data?.error ?? data?.message ?? `Action failed with HTTP ${res.status}.`)
   return data as Record<string, unknown>
+}
+
+function invokeAskPearl(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return invokeEdgeFunction('ask-pearl', body)
+}
+
+export interface SdsLookupResult {
+  cid: number | null
+  pubchemUrl: string | null
+  candidates: { url: string; label: string }[]
 }
 
 /**
@@ -426,6 +466,12 @@ export const api = {
       }
     }
     return (await invokeAskPearl({ question, workspace })) as unknown as AskPearlReply
+  },
+
+  async lookupSds(cas: string): Promise<SdsLookupResult> {
+    if (!IS_CLOUD) throw new ApiError('SDS lookup needs the app connected to Supabase.')
+    const res = await invokeEdgeFunction('sds-lookup', { cas })
+    return res as unknown as SdsLookupResult
   },
 
   async draftMethods(project: string): Promise<string> {
@@ -782,6 +828,17 @@ export const api = {
     }
     const { error } = await requireSupabase().from('profiles').update({ role }).eq('id', target.id)
     if (error) fail('Could not change that role', error)
+    await api.log(null, 'role_changed', details, actor)
+  },
+
+  /** Grants or revokes the PI oversight dashboard — layered on top of
+   *  `role` rather than replacing it, so a PI keeps whatever admin/member
+   *  access they already had. */
+  async setPiFlag(target: Profile, isPi: boolean, actor: Profile): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('The PI flag needs the app connected to Supabase.')
+    const details = `${target.full_name} ${isPi ? 'made' : 'removed as'} PI`
+    const { error } = await requireSupabase().from('profiles').update({ is_pi: isPi }).eq('id', target.id)
+    if (error) fail('Could not update the PI flag', error)
     await api.log(null, 'role_changed', details, actor)
   },
 
@@ -1282,13 +1339,45 @@ export const api = {
 
   async createComment(input: CommentInput, actor: Profile): Promise<Comment> {
     if (!IS_CLOUD) return localDb.insertComment(input, actor)
-    const { data, error } = await requireSupabase()
+    const sb = requireSupabase()
+    const { data, error } = await sb
       .from('comments')
       .insert({ ...input, author_id: actor.id, author_name: actor.full_name })
       .select()
       .single()
     if (missingTable(error)) return localDb.insertComment(input, actor)
     if (error) fail('Could not add comment', error)
+
+    // A reply on a project thread pings every PI (minus whoever just wrote
+    // it) — the whole point of a shared thread is that the PI doesn't have
+    // to keep re-checking it manually for a reply. Plus anyone @mentioned
+    // by full name gets their own ping too, deduped against the PI list.
+    if (input.resource_type === 'project') {
+      const { data: approved } = await sb.from('profiles').select('id, full_name, is_pi').eq('approved', true)
+      const rows = (approved ?? []) as Array<{ id: string; full_name: string; is_pi: boolean }>
+
+      const recipients = new Map<string, string>() // id -> reason
+      for (const row of rows) {
+        if (row.id === actor.id) continue
+        if (row.is_pi) recipients.set(row.id, 'reply')
+        else if (row.full_name && new RegExp(`@${row.full_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(input.body)) {
+          recipients.set(row.id, 'mention')
+        }
+      }
+
+      if (recipients.size > 0) {
+        await sb.from('notifications').insert(
+          [...recipients.entries()].map(([recipient_id, reason]) => ({
+            recipient_id,
+            actor_id: actor.id,
+            actor_name: actor.full_name,
+            project_id: input.resource_id,
+            message: reason === 'mention' ? `mentioned you: ${input.body.slice(0, 140)}` : `replied: ${input.body.slice(0, 140)}`,
+          })),
+        )
+      }
+    }
+
     return data as Comment
   },
 
@@ -1304,6 +1393,435 @@ export const api = {
     }
     if (error) fail('Could not delete comment', error)
     await api.log(null, 'updated', `Deleted comment on ${row.resource_type}`, actor)
+  },
+
+  // -------------------------------------------------------------------------
+  // Projects, weekly updates, and PI oversight — cloud-only; a demo-mode
+  // session simply sees nothing here rather than a fake local log, since
+  // there's no group of people to report progress to in a solo trial.
+  // -------------------------------------------------------------------------
+
+  async listProjects(): Promise<Project[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('projects')
+      .select('*')
+      .eq('archived', false)
+      .order('name')
+    if (missingTable(error)) return []
+    if (error) fail('Could not load projects', error)
+    return (data ?? []) as Project[]
+  },
+
+  /** Finds a project by name (case-insensitive) or creates it — so posting
+   *  an update never requires a separate "create project" step first. */
+  async findOrCreateProject(name: string, workspace: ProjectWorkspace, actor: Profile): Promise<Project> {
+    if (!IS_CLOUD) throw new ApiError('Projects need the app connected to Supabase.')
+    const trimmed = name.trim()
+    if (!trimmed) throw new ApiError('Project name is required.')
+    const sb = requireSupabase()
+
+    const existing = await sb.from('projects').select('*').ilike('name', trimmed).maybeSingle()
+    if (existing.data) return existing.data as Project
+
+    const { data, error } = await sb
+      .from('projects')
+      .insert({ name: trimmed, workspace, created_by: actor.id })
+      .select()
+      .single()
+    if (error?.code === '23505') {
+      // Someone else created the same name a moment ago — fetch instead of failing.
+      const retry = await sb.from('projects').select('*').ilike('name', trimmed).single()
+      if (!retry.error) return retry.data as Project
+    }
+    if (error) fail('Could not create project', error)
+    return data as Project
+  },
+
+  async listProjectUpdates(projectId: string): Promise<ProjectUpdate[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('project_updates')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+    if (missingTable(error)) return []
+    if (error) fail('Could not load project updates', error)
+    return (data ?? []) as ProjectUpdate[]
+  },
+
+  /** Every update across every project, newest first — the PI dashboard's
+   *  main feed, capped so one chatty project can't drown out the rest. */
+  async listRecentProjectUpdates(limit = 200): Promise<ProjectUpdate[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('project_updates')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (missingTable(error)) return []
+    if (error) fail('Could not load project updates', error)
+    return (data ?? []) as ProjectUpdate[]
+  },
+
+  async addProjectUpdate(input: ProjectUpdateInput, actor: Profile): Promise<ProjectUpdate> {
+    if (!IS_CLOUD) throw new ApiError('Project updates need the app connected to Supabase.')
+    const { data, error } = await requireSupabase()
+      .from('project_updates')
+      .insert({ ...input, author_id: actor.id, author_name: actor.full_name })
+      .select()
+      .single()
+    if (error) fail('Could not post that update', error)
+    return data as ProjectUpdate
+  },
+
+  async listNotifications(): Promise<AppNotification[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50)
+    if (missingTable(error)) return []
+    if (error) fail('Could not load notifications', error)
+    return (data ?? []) as AppNotification[]
+  },
+
+  async markNotificationRead(id: string): Promise<void> {
+    if (!IS_CLOUD) return
+    const { error } = await requireSupabase()
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('read_at', null)
+    if (error && !missingTable(error)) fail('Could not update that notification', error)
+  },
+
+  /** Pings one recipient about a project — used by the PI dashboard's
+   *  comment box. Posts a project comment and a notification together so
+   *  the recipient sees both the message and an unread badge. */
+  async pingAboutProject(
+    projectId: string,
+    recipientId: string,
+    message: string,
+    actor: Profile,
+  ): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('Pings need the app connected to Supabase.')
+    const sb = requireSupabase()
+    const { error: commentError } = await sb
+      .from('comments')
+      .insert({ resource_type: 'project', resource_id: projectId, author_id: actor.id, author_name: actor.full_name, body: message })
+    if (commentError) fail('Could not post that comment', commentError)
+
+    const { error: notifyError } = await sb.from('notifications').insert({
+      recipient_id: recipientId,
+      actor_id: actor.id,
+      actor_name: actor.full_name,
+      project_id: projectId,
+      message,
+    })
+    if (notifyError && !missingTable(notifyError)) fail('Comment posted, but the ping failed', notifyError)
+  },
+
+  /** Explicit creation, distinct from `findOrCreateProject` — used from the
+   *  PI console where "add a project" is a deliberate action, not a
+   *  side-effect of someone posting their first update. */
+  async createProject(name: string, workspace: ProjectWorkspace, actor: Profile): Promise<Project> {
+    return api.findOrCreateProject(name, workspace, actor)
+  },
+
+  async archiveProject(project: Project): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('Projects need the app connected to Supabase.')
+    const { error } = await requireSupabase().from('projects').update({ archived: true }).eq('id', project.id)
+    if (error) fail('Could not archive that project', error)
+  },
+
+  async unarchiveProject(project: Project): Promise<Project> {
+    if (!IS_CLOUD) throw new ApiError('Projects need the app connected to Supabase.')
+    const { data, error } = await requireSupabase()
+      .from('projects')
+      .update({ archived: false })
+      .eq('id', project.id)
+      .select()
+      .single()
+    if (error) fail('Could not restore that project', error)
+    return data as Project
+  },
+
+  async listArchivedProjects(): Promise<Project[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('projects')
+      .select('*')
+      .eq('archived', true)
+      .order('name')
+    if (missingTable(error)) return []
+    if (error) fail('Could not load archived projects', error)
+    return (data ?? []) as Project[]
+  },
+
+  async updateProjectDescription(project: Project, description: string): Promise<Project> {
+    return api.updateProject(project, { description })
+  },
+
+  async updateProject(
+    project: Project,
+    patch: Partial<Pick<Project, 'description' | 'status' | 'target_date' | 'budget_amount' | 'workspace'>>,
+  ): Promise<Project> {
+    if (!IS_CLOUD) throw new ApiError('Projects need the app connected to Supabase.')
+    const { data, error } = await requireSupabase()
+      .from('projects')
+      .update(patch)
+      .eq('id', project.id)
+      .select()
+      .single()
+    if (error) fail('Could not save that project', error)
+    return data as Project
+  },
+
+  async getProject(id: string): Promise<Project | null> {
+    if (!IS_CLOUD) return null
+    const { data, error } = await requireSupabase().from('projects').select('*').eq('id', id).maybeSingle()
+    if (error) fail('Could not load that project', error)
+    return (data as Project | null) ?? null
+  },
+
+  async listMilestones(projectId: string): Promise<ProjectMilestone[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('project_milestones')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at')
+    if (missingTable(error)) return []
+    if (error) fail('Could not load milestones', error)
+    return (data ?? []) as ProjectMilestone[]
+  },
+
+  async createMilestone(input: ProjectMilestoneInput): Promise<ProjectMilestone> {
+    if (!IS_CLOUD) throw new ApiError('Milestones need the app connected to Supabase.')
+    const { data, error } = await requireSupabase().from('project_milestones').insert(input).select().single()
+    if (error) fail('Could not add that milestone', error)
+    return data as ProjectMilestone
+  },
+
+  async updateMilestone(
+    milestone: ProjectMilestone,
+    patch: Partial<Pick<ProjectMilestone, 'status' | 'title' | 'assignee_member_id' | 'due_date'>>,
+  ): Promise<ProjectMilestone> {
+    if (!IS_CLOUD) throw new ApiError('Milestones need the app connected to Supabase.')
+    const { data, error } = await requireSupabase()
+      .from('project_milestones')
+      .update(patch)
+      .eq('id', milestone.id)
+      .select()
+      .single()
+    if (error) fail('Could not update that milestone', error)
+    return data as ProjectMilestone
+  },
+
+  async deleteMilestone(milestone: ProjectMilestone): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('Milestones need the app connected to Supabase.')
+    const { error } = await requireSupabase().from('project_milestones').delete().eq('id', milestone.id)
+    if (error) fail('Could not delete that milestone', error)
+  },
+
+  async listFeedPosts(): Promise<FeedPost[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase().from('feed_posts').select('*').order('created_at', { ascending: false })
+    if (missingTable(error)) return []
+    if (error) fail('Could not load the feed', error)
+    return (data ?? []) as FeedPost[]
+  },
+
+  async createFeedPost(input: FeedPostInput, actor: Profile): Promise<FeedPost> {
+    if (!IS_CLOUD) throw new ApiError('The feed needs the app connected to Supabase.')
+    const sb = requireSupabase()
+    const { data, error } = await sb
+      .from('feed_posts')
+      .insert({ ...input, author_id: actor.id, author_name: actor.full_name })
+      .select()
+      .single()
+    if (error) fail('Could not post that', error)
+
+    const { data: approved } = await sb.from('profiles').select('id, full_name').eq('approved', true)
+    const mentioned = matchMentionedMembers((approved ?? []) as Array<{ id: string; full_name: string }>, input.body, actor.id)
+    if (mentioned.length > 0) {
+      await sb.from('notifications').insert(
+        mentioned.map((recipient_id) => ({
+          recipient_id,
+          actor_id: actor.id,
+          actor_name: actor.full_name,
+          message: `mentioned you in the feed: ${input.body.slice(0, 140)}`,
+        })),
+      )
+    }
+
+    return data as FeedPost
+  },
+
+  async deleteFeedPost(post: FeedPost): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('The feed needs the app connected to Supabase.')
+    const { error } = await requireSupabase().from('feed_posts').delete().eq('id', post.id)
+    if (error) fail('Could not delete that post', error)
+  },
+
+  async listFeedPostLikes(): Promise<FeedPostLike[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase().from('feed_post_likes').select('*')
+    if (missingTable(error)) return []
+    if (error) fail('Could not load likes', error)
+    return (data ?? []) as FeedPostLike[]
+  },
+
+  async likeFeedPost(postId: string, actor: Profile): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('The feed needs the app connected to Supabase.')
+    const { error } = await requireSupabase().from('feed_post_likes').insert({ post_id: postId, member_id: actor.id })
+    if (error && error.code !== '23505') fail('Could not like that post', error)
+  },
+
+  async unlikeFeedPost(postId: string, actor: Profile): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('The feed needs the app connected to Supabase.')
+    const { error } = await requireSupabase()
+      .from('feed_post_likes')
+      .delete()
+      .eq('post_id', postId)
+      .eq('member_id', actor.id)
+    if (error) fail('Could not unlike that post', error)
+  },
+
+  async listIncidentReports(): Promise<IncidentReport[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('incident_reports')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (missingTable(error)) return []
+    if (error) fail('Could not load incident reports', error)
+    return (data ?? []) as IncidentReport[]
+  },
+
+  async createIncidentReport(input: IncidentReportInput, actor: Profile): Promise<IncidentReport> {
+    if (!IS_CLOUD) throw new ApiError('Incident reports need the app connected to Supabase.')
+    const { data, error } = await requireSupabase()
+      .from('incident_reports')
+      .insert({ ...input, reported_by: actor.id, reported_by_name: actor.full_name })
+      .select()
+      .single()
+    if (error) fail('Could not file that report', error)
+    return data as IncidentReport
+  },
+
+  async listSops(): Promise<Sop[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase().from('sops').select('*').order('title')
+    if (missingTable(error)) return []
+    if (error) fail('Could not load SOPs', error)
+    return (data ?? []) as Sop[]
+  },
+
+  async createSop(input: SopInput, actor: Profile): Promise<Sop> {
+    if (!IS_CLOUD) throw new ApiError('SOPs need the app connected to Supabase.')
+    const { data, error } = await requireSupabase()
+      .from('sops')
+      .insert({ ...input, created_by: actor.id, created_by_name: actor.full_name })
+      .select()
+      .single()
+    if (error) fail('Could not create that SOP', error)
+    return data as Sop
+  },
+
+  async updateSop(sop: Sop, patch: SopInput): Promise<Sop> {
+    if (!IS_CLOUD) throw new ApiError('SOPs need the app connected to Supabase.')
+    const { data, error } = await requireSupabase()
+      .from('sops')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', sop.id)
+      .select()
+      .single()
+    if (error) fail('Could not save that SOP', error)
+    return data as Sop
+  },
+
+  async deleteSop(sop: Sop): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('SOPs need the app connected to Supabase.')
+    const { error } = await requireSupabase().from('sops').delete().eq('id', sop.id)
+    if (error) fail('Could not delete that SOP', error)
+  },
+
+  /** Populated entirely by a database trigger — never written to from here. */
+  async listChemicalHistory(chemicalId: string): Promise<ChemicalHistoryEntry[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('chemical_history')
+      .select('*')
+      .eq('chemical_id', chemicalId)
+      .order('changed_at', { ascending: false })
+    if (missingTable(error)) return []
+    if (error) fail('Could not load history', error)
+    return (data ?? []) as ChemicalHistoryEntry[]
+  },
+
+  /** Admin-only supervision notes about a member — RLS already keeps these
+   *  from the member they're about; missingTable() failures fall back to an
+   *  empty list rather than surfacing an error toast for a not-yet-migrated
+   *  install. */
+  async listPiNotes(memberId: string): Promise<PiNote[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase()
+      .from('pi_notes')
+      .select('*')
+      .eq('member_id', memberId)
+      .order('created_at', { ascending: false })
+    if (missingTable(error)) return []
+    if (error) fail('Could not load notes', error)
+    return (data ?? []) as PiNote[]
+  },
+
+  async addPiNote(memberId: string, body: string, actor: Profile): Promise<PiNote> {
+    if (!IS_CLOUD) throw new ApiError('Notes need the app connected to Supabase.')
+    const { data, error } = await requireSupabase()
+      .from('pi_notes')
+      .insert({ member_id: memberId, author_id: actor.id, author_name: actor.full_name, body })
+      .select()
+      .single()
+    if (error) fail('Could not save that note', error)
+    return data as PiNote
+  },
+
+  async deletePiNote(note: PiNote): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('Notes need the app connected to Supabase.')
+    const { error } = await requireSupabase().from('pi_notes').delete().eq('id', note.id)
+    if (error) fail('Could not delete that note', error)
+  },
+
+  async listAllProjectMembers(): Promise<ProjectMember[]> {
+    if (!IS_CLOUD) return []
+    const { data, error } = await requireSupabase().from('project_members').select('*')
+    if (missingTable(error)) return []
+    if (error) fail('Could not load project assignments', error)
+    return (data ?? []) as ProjectMember[]
+  },
+
+  async assignMember(projectId: string, profileId: string, actor: Profile): Promise<ProjectMember> {
+    if (!IS_CLOUD) throw new ApiError('Assignments need the app connected to Supabase.')
+    const { data, error } = await requireSupabase()
+      .from('project_members')
+      .upsert({ project_id: projectId, profile_id: profileId, assigned_by: actor.id }, { onConflict: 'project_id,profile_id' })
+      .select()
+      .single()
+    if (error) fail('Could not assign that member', error)
+    return data as ProjectMember
+  },
+
+  async unassignMember(projectId: string, profileId: string): Promise<void> {
+    if (!IS_CLOUD) throw new ApiError('Assignments need the app connected to Supabase.')
+    const { error } = await requireSupabase()
+      .from('project_members')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('profile_id', profileId)
+    if (error) fail('Could not remove that assignment', error)
   },
 
   async listEquipment(): Promise<Equipment[]> {

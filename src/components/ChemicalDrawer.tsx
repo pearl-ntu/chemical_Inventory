@@ -1,6 +1,8 @@
 import { Suspense, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Beaker,
+  BookOpen,
   Building2,
   CalendarDays,
   Camera,
@@ -9,6 +11,7 @@ import {
   Database,
   ExternalLink,
   FileText,
+  History,
   MapPin,
   PackagePlus,
   Pencil,
@@ -21,6 +24,7 @@ import { useInventory } from '../context/InventoryContext'
 import { useToast } from '../context/ToastContext'
 import { api } from '../lib/api'
 import { resolveDeliveryPhotoUrl } from '../lib/deliveryPhoto'
+import { resolveDocUrl } from '../lib/labDocuments'
 import * as pubchem from '../lib/pubchem'
 import { containerDeepLink, qrDataUrl } from '../lib/qr'
 import { STATUS_LABEL, type Chemical, type ResearchAsset } from '../lib/types'
@@ -30,6 +34,7 @@ import { HazardBadges } from './HazardBadges'
 import { LazyMolfileSvgRenderer, LazyReactionViewer } from './LazyStructure'
 import { ConfirmDialog, Drawer, Field, Modal, Spinner } from './ui'
 import { CommentThread } from './CommentThread'
+import { ChemicalHistoryPanel } from './ChemicalHistoryPanel'
 import { Molecule3DViewer } from './Molecule3DViewer'
 import { PubChemStructureImage } from './PubChemStructureImage'
 
@@ -139,6 +144,15 @@ export function ChemicalDrawer({
   const c = chemical
   const canDelete = isAdmin || c.created_by === profile?.id
   const viewerSdf = sdf3d ?? sdf2d ?? c.structure_molfile
+
+  async function openDoc(value: string | null | undefined, label: string) {
+    try {
+      const url = await resolveDocUrl(value)
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Could not open the ${label}.`)
+    }
+  }
 
   async function copyCode() {
     try {
@@ -469,22 +483,53 @@ export function ChemicalDrawer({
 
           {/* external ----------------------------------------------------- */}
           <div className="flex flex-wrap gap-2">
-            <a
-              href={pubchem.sdsSearchUrl(c.name, c.cas, c.supplier)}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="btn-secondary"
-            >
-              <FileText className="h-4 w-4" /> Find the SDS
-              <ExternalLink className="h-3 w-3 opacity-60" />
-            </a>
+            {c.sds_url ? (
+              <button type="button" className="btn-secondary" onClick={() => void openDoc(c.sds_url, 'SDS')}>
+                <FileText className="h-4 w-4" /> Open SDS
+                <ExternalLink className="h-3 w-3 opacity-60" />
+              </button>
+            ) : (
+              <a
+                href={pubchem.sdsSearchUrl(c.name, c.cas, c.supplier)}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="btn-secondary"
+              >
+                <FileText className="h-4 w-4" /> Find the SDS
+                <ExternalLink className="h-3 w-3 opacity-60" />
+              </a>
+            )}
+            {c.coa_url && (
+              <button type="button" className="btn-secondary" onClick={() => void openDoc(c.coa_url, 'CoA')}>
+                <FileText className="h-4 w-4" /> Open CoA
+                <ExternalLink className="h-3 w-3 opacity-60" />
+              </button>
+            )}
+            {c.invoice_url && (
+              <button type="button" className="btn-secondary" onClick={() => void openDoc(c.invoice_url, 'invoice/DO')}>
+                <FileText className="h-4 w-4" /> Open invoice/DO
+                <ExternalLink className="h-3 w-3 opacity-60" />
+              </button>
+            )}
             {info && (
               <a href={info.pageUrl} target="_blank" rel="noreferrer noopener" className="btn-secondary">
                 PubChem CID {info.cid}
                 <ExternalLink className="h-3 w-3 opacity-60" />
               </a>
             )}
+            <Link to={`/sops?chemical=${c.id}`} className="btn-secondary">
+              <BookOpen className="h-4 w-4" /> SOPs for this chemical
+            </Link>
           </div>
+
+          <details className="card p-3">
+            <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-400 hover:text-ink-600 dark:hover:text-ink-300">
+              <History className="h-3.5 w-3.5" /> History
+            </summary>
+            <div className="mt-2">
+              <ChemicalHistoryPanel chemicalId={c.id} />
+            </div>
+          </details>
 
           <CommentThread resourceType="chemical" resourceId={c.id} />
         </div>

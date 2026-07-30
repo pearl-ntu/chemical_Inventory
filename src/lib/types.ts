@@ -107,6 +107,9 @@ export interface Profile {
   has_password: boolean
   lab_position: string | null
   avatar_key?: string | null
+  /** Grants the PI-only oversight dashboard and pings, on top of whatever
+   *  `role` already allows — see supabase/upgrade_pi_oversight.sql. */
+  is_pi?: boolean
   created_at: string
 }
 
@@ -122,6 +125,180 @@ export interface Invite {
   invited_by: string | null
   invited_by_name: string | null
   created_at: string
+}
+
+export type ProjectWorkspace = 'experimental' | 'computational' | 'both'
+
+export const PROJECT_STATUSES = ['active', 'on_hold', 'completed', 'archived'] as const
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
+
+export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
+  active: 'Active',
+  on_hold: 'On hold',
+  completed: 'Completed',
+  archived: 'Archived',
+}
+
+export interface Project {
+  id: string
+  name: string
+  workspace: ProjectWorkspace
+  description: string | null
+  status: ProjectStatus
+  target_date: string | null
+  budget_amount: number | null
+  created_by: string | null
+  created_at: string
+  archived: boolean
+}
+
+export type ProjectHealth = 'red' | 'amber' | 'green'
+
+export const MILESTONE_STATUSES = ['todo', 'in_progress', 'done'] as const
+export type MilestoneStatus = (typeof MILESTONE_STATUSES)[number]
+
+export const MILESTONE_STATUS_LABEL: Record<MilestoneStatus, string> = {
+  todo: 'To do',
+  in_progress: 'In progress',
+  done: 'Done',
+}
+
+export interface ProjectMilestone {
+  id: string
+  project_id: string
+  title: string
+  status: MilestoneStatus
+  assignee_member_id: string | null
+  due_date: string | null
+  created_at: string
+}
+
+export type ProjectMilestoneInput = Pick<ProjectMilestone, 'project_id' | 'title' | 'assignee_member_id' | 'due_date'>
+
+export type FeedLinkedResourceType = 'chemical' | 'research_asset' | 'project'
+
+export interface FeedPost {
+  id: string
+  author_id: string | null
+  author_name: string | null
+  body: string
+  image_url: string | null
+  linked_resource_type: FeedLinkedResourceType | null
+  linked_resource_id: string | null
+  cross_post_to_teams: boolean
+  created_at: string
+}
+
+export type FeedPostInput = Pick<
+  FeedPost,
+  'body' | 'image_url' | 'linked_resource_type' | 'linked_resource_id' | 'cross_post_to_teams'
+>
+
+export interface FeedPostLike {
+  post_id: string
+  member_id: string
+  created_at: string
+}
+
+export const INCIDENT_SEVERITIES = ['near_miss', 'minor', 'major'] as const
+export type IncidentSeverity = (typeof INCIDENT_SEVERITIES)[number]
+
+export const INCIDENT_SEVERITY_LABEL: Record<IncidentSeverity, string> = {
+  near_miss: 'Near miss',
+  minor: 'Minor',
+  major: 'Major',
+}
+
+export type IncidentResourceType = 'chemical' | 'equipment' | 'other'
+
+export interface IncidentReport {
+  id: string
+  reported_by: string | null
+  reported_by_name: string | null
+  resource_type: IncidentResourceType | null
+  resource_id: string | null
+  severity: IncidentSeverity
+  description: string
+  occurred_at: string
+  actions_taken: string | null
+  created_at: string
+}
+
+export type IncidentReportInput = Pick<
+  IncidentReport,
+  'resource_type' | 'resource_id' | 'severity' | 'description' | 'occurred_at' | 'actions_taken'
+>
+
+export interface Sop {
+  id: string
+  title: string
+  body: string
+  related_chemical_ids: string[]
+  related_equipment_id: string | null
+  created_by: string | null
+  created_by_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type SopInput = Pick<Sop, 'title' | 'body' | 'related_chemical_ids' | 'related_equipment_id'>
+
+export interface ChemicalHistoryEntry {
+  id: string
+  chemical_id: string
+  changed_by: string | null
+  changed_by_name: string | null
+  changed_at: string
+  diff: Record<string, { old: unknown; new: unknown }>
+}
+
+export interface PiNote {
+  id: string
+  member_id: string
+  author_id: string | null
+  author_name: string | null
+  body: string
+  created_at: string
+}
+
+export const PROJECT_UPDATE_STATUSES = ['on_track', 'blocked', 'done', 'paused'] as const
+export type ProjectUpdateStatus = (typeof PROJECT_UPDATE_STATUSES)[number]
+
+export const PROJECT_UPDATE_STATUS_LABEL: Record<ProjectUpdateStatus, string> = {
+  on_track: 'On track',
+  blocked: 'Blocked',
+  done: 'Done',
+  paused: 'Paused',
+}
+
+export interface ProjectUpdate {
+  id: string
+  project_id: string
+  author_id: string | null
+  author_name: string | null
+  status: ProjectUpdateStatus
+  summary: string
+  created_at: string
+}
+
+export type ProjectUpdateInput = Pick<ProjectUpdate, 'project_id' | 'status' | 'summary'>
+
+export interface ProjectMember {
+  project_id: string
+  profile_id: string
+  assigned_by: string | null
+  assigned_at: string
+}
+
+export interface AppNotification {
+  id: string
+  recipient_id: string
+  actor_id: string | null
+  actor_name: string | null
+  project_id: string | null
+  message: string
+  created_at: string
+  read_at: string | null
 }
 
 export type ActivityAction =
@@ -303,7 +480,7 @@ export interface OwnershipTransferInput {
   to_member_id: string
 }
 
-export type CommentResourceType = 'chemical' | 'research_asset' | 'equipment_booking'
+export type CommentResourceType = 'chemical' | 'research_asset' | 'equipment_booking' | 'project' | 'feed_post'
 
 export interface Comment {
   id: string

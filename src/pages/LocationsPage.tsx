@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Check, ChevronDown, FlaskConical, MapPin, Plus, Refrigerator, ShieldAlert, Trash2, Warehouse } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Camera, Check, ChevronDown, FlaskConical, MapPin, Plus, Refrigerator, ShieldAlert, Trash2, Warehouse } from 'lucide-react'
 import { ChemicalDrawer } from '../components/ChemicalDrawer'
 import { HazardBadges } from '../components/HazardBadges'
 import { PageHeader } from '../components/Layout'
@@ -299,9 +300,18 @@ export default function LocationsPage() {
                               </p>
                             )}
                           </div>
-                          <span className="rounded-lg bg-pearl-50 px-2 py-1 text-sm font-bold text-pearl-700 dark:bg-pearl-500/10 dark:text-pearl-300">
-                            {items.length}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <Link
+                              to={`/stocktake?location=${encodeURIComponent(location)}`}
+                              className="btn-ghost p-1.5 text-ink-400 hover:text-pearl-600"
+                              title="Stocktake this location"
+                            >
+                              <Camera className="h-4 w-4" />
+                            </Link>
+                            <span className="rounded-lg bg-pearl-50 px-2 py-1 text-sm font-bold text-pearl-700 dark:bg-pearl-500/10 dark:text-pearl-300">
+                              {items.length}
+                            </span>
+                          </div>
                         </div>
 
                         {capacityPct != null && (
