@@ -6,7 +6,8 @@ import { useAuth } from '../context/AuthContext'
 
 const DEVELOPER_EMAIL = 'abedisyedaliabbas@gmail.com'
 const DEVELOPER_SITE = 'https://abedisyedaliabbas.github.io/molecular-design-lab/'
-const FORMSPREE_ENDPOINT = import.meta.env.VITE_FORMSPREE_ENDPOINT
+const DEFAULT_FORMSPREE_ENDPOINT = 'https://formspree.io/f/mjkjgalv'
+const FORMSPREE_ENDPOINT = import.meta.env.VITE_FORMSPREE_ENDPOINT || DEFAULT_FORMSPREE_ENDPOINT
 
 type InquiryType = 'bug' | 'feature' | 'product' | 'collaboration' | 'other'
 
@@ -116,8 +117,8 @@ export default function ContactDeveloperPage() {
                 Tell me what PEARL needs next
               </h2>
               <p className="mt-1 text-sm leading-relaxed text-ink-500 dark:text-ink-400">
-                The form can be wired to Formspree using <code>VITE_FORMSPREE_ENDPOINT</code>.
-                Until that is set, it falls back to a prefilled email to the developer.
+                Share bugs, ideas, or collaboration requests here. Your message goes straight to
+                the PEARL developer inbox.
               </p>
             </div>
           </div>
