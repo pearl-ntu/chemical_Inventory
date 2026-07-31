@@ -58,6 +58,18 @@ import { nextCode } from './utils'
 
 export class ApiError extends Error {}
 
+const DEVELOPER_EMAIL = 'abedisyedaliabbas@gmail.com'
+
+function isDeveloperAccount(profile: Pick<Profile, 'email'>) {
+  return profile.email.toLowerCase() === DEVELOPER_EMAIL
+}
+
+function protectDeveloperAccount(target: Profile, action: string) {
+  if (isDeveloperAccount(target)) {
+    throw new ApiError(`The PEARL developer account cannot be ${action}.`)
+  }
+}
+
 const LOCAL_LAB_LOCATIONS_KEY = 'pearl.custom_lab_locations'
 
 export interface AskPearlReply {
@@ -830,6 +842,7 @@ export const api = {
   },
 
   async setRole(target: Profile, role: Role, actor: Profile): Promise<void> {
+    protectDeveloperAccount(target, 'demoted or role-changed')
     const details = `${target.full_name}'s access set to ${role}`
     if (!IS_CLOUD) {
       localDb.setRole(target.id, role)
@@ -845,6 +858,7 @@ export const api = {
    *  `role` rather than replacing it, so a PI keeps whatever admin/member
    *  access they already had. */
   async setPiFlag(target: Profile, isPi: boolean, actor: Profile): Promise<void> {
+    protectDeveloperAccount(target, 'changed by PI controls')
     if (!IS_CLOUD) throw new ApiError('The PI flag needs the app connected to Supabase.')
     const details = `${target.full_name} ${isPi ? 'made' : 'removed as'} PI`
     const { error } = await requireSupabase().from('profiles').update({ is_pi: isPi }).eq('id', target.id)
@@ -875,6 +889,7 @@ export const api = {
   },
 
   async revokeAccount(target: Profile, actor: Profile): Promise<void> {
+    protectDeveloperAccount(target, 'revoked')
     const details = `${target.full_name}'s inventory access revoked`
     if (!IS_CLOUD) {
       localDb.updateUser(target.id, { approved: false, role: 'viewer' })
@@ -890,6 +905,7 @@ export const api = {
   },
 
   async removeMemberAccess(target: Profile, actor: Profile): Promise<void> {
+    protectDeveloperAccount(target, 'removed')
     const details = `${target.full_name}'s account removed`
     if (!IS_CLOUD) {
       localDb.saveUsers(localDb.users().filter((u) => u.id !== target.id))

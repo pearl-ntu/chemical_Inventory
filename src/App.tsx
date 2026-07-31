@@ -14,6 +14,7 @@ import ComputationalDashboardPage from './pages/ComputationalDashboardPage'
 import ComputationalWorkbenchPage from './pages/ComputationalWorkbenchPage'
 import ComputationalJobsPage from './pages/ComputationalJobsPage'
 import ComputationalProtocolsPage from './pages/ComputationalProtocolsPage'
+import ContactDeveloperPage from './pages/ContactDeveloperPage'
 import DashboardPage from './pages/DashboardPage'
 import EquipmentPage from './pages/EquipmentPage'
 import FeedPage from './pages/FeedPage'
@@ -124,6 +125,7 @@ function AppContent() {
           <Route path="activity" element={<ActivityPage />} />
           <Route path="labels" element={<LabelsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="contact-developer" element={<ContactDeveloperPage />} />
           <Route path="members" element={<MembersPage />} />
           <Route path="feed" element={<FeedPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

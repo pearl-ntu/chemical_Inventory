@@ -389,6 +389,13 @@ function SidebarContent({
           <Bug className="h-4 w-4" /> Report bug
         </button>
         <NavLink
+          to="/contact-developer"
+          onClick={onNavigate}
+          className={({ isActive }) => cx('nav-link', isActive && 'nav-link-active')}
+        >
+          <MessageSquare className="h-4 w-4" /> Contact developer
+        </NavLink>
+        <NavLink
           to="/settings"
           onClick={onNavigate}
           className={({ isActive }) => cx('nav-link', isActive && 'nav-link-active')}

@@ -206,6 +206,10 @@ export default function MembersPage() {
 
   async function changeRole(target: Profile, role: Role) {
     if (!profile) return
+    if (isDeveloperProfile(target)) {
+      toast.error('The PEARL developer account cannot be demoted or role-changed.')
+      return
+    }
     if (target.is_pi && !profile.is_pi) {
       toast.error('Only the PI can change the PI account’s access level.')
       return
@@ -224,6 +228,10 @@ export default function MembersPage() {
 
   async function togglePi(target: Profile) {
     if (!profile) return
+    if (isDeveloperProfile(target)) {
+      toast.error('The PEARL developer account is protected from PI controls.')
+      return
+    }
     const next = !target.is_pi
     setSaving(target.id)
     try {
@@ -283,6 +291,10 @@ export default function MembersPage() {
 
   async function revoke(target: Profile) {
     if (!profile) return
+    if (isDeveloperProfile(target)) {
+      toast.error('The PEARL developer account cannot be revoked.')
+      return
+    }
     if (target.is_pi && !profile.is_pi) {
       toast.error('Only the PI can revoke the PI account’s access.')
       return
@@ -304,6 +316,10 @@ export default function MembersPage() {
 
   async function removeAccess(target: Profile) {
     if (!profile) return
+    if (isDeveloperProfile(target)) {
+      toast.error('The PEARL developer account cannot be removed.')
+      return
+    }
     if (target.is_pi && !profile.is_pi) {
       toast.error('Only the PI can remove the PI account.')
       return
@@ -322,6 +338,10 @@ export default function MembersPage() {
   }
 
   async function openOffboarding(target: Profile) {
+    if (isDeveloperProfile(target)) {
+      toast.error('The PEARL developer account cannot be offboarded.')
+      return
+    }
     if (target.is_pi && !profile?.is_pi) {
       toast.error('Only the PI can start handover for the PI account.')
       return
@@ -637,9 +657,9 @@ export default function MembersPage() {
               // Never let the last admin demote themselves out of the account.
               const isLastAdmin = m.role === 'admin' && adminCount === 1
               const piProtected = Boolean(m.is_pi && !isPi)
-              const accessLocked = isLastAdmin || piProtected
-              const avatarKey = m.avatar_key ?? localAvatarKey(m.id)
               const isDeveloper = isDeveloperProfile(m)
+              const accessLocked = isLastAdmin || piProtected || isDeveloper
+              const avatarKey = m.avatar_key ?? localAvatarKey(m.id)
               return (
                 <div key={m.id} className="relative grid grid-cols-[minmax(260px,1fr)_220px_132px_48px] items-center gap-3 border-b border-ink-100 px-4 py-2.5 last:border-b-0 hover:bg-ink-50/70 dark:border-ink-800 dark:hover:bg-ink-900/45">
                   <div className="flex min-w-0 items-center gap-3">
@@ -743,6 +763,8 @@ export default function MembersPage() {
                       title={
                         piProtected
                           ? 'Only the PI can change the PI account’s access.'
+                          : isDeveloper
+                            ? 'The PEARL developer account cannot be changed by admins or PI users.'
                           : isLastAdmin
                             ? 'This is the only admin — promote someone else first.'
                             : ROLE_HELP[m.role]
@@ -822,7 +844,7 @@ export default function MembersPage() {
                           <MenuAction
                             icon={<ShieldCheck className="h-3.5 w-3.5" />}
                             label={m.is_pi ? 'Remove PI access' : 'Make PI'}
-                            disabled={saving === m.id}
+                            disabled={saving === m.id || isDeveloper}
                             onClick={() => { setActionMenuFor(null); void togglePi(m) }}
                           />
                         )}
