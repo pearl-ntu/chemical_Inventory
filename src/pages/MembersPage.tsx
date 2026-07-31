@@ -16,6 +16,8 @@ const ROLE_HELP: Record<Role, string> = {
   viewer: 'Read-only. Useful for visitors, collaborators and undergraduates.',
 }
 
+const DEVELOPER_EMAIL = 'abedisyedaliabbas@gmail.com'
+
 const AVATAR_CHOICES = [
   { key: 'pearl', label: 'Pearl' },
   { key: 'emerald', label: 'Emerald' },
@@ -24,6 +26,10 @@ const AVATAR_CHOICES = [
   { key: 'rose', label: 'Rose' },
   { key: 'ink', label: 'Ink' },
 ]
+
+function isDeveloperProfile(member: Profile) {
+  return member.email.toLowerCase() === DEVELOPER_EMAIL
+}
 
 export default function MembersPage() {
   const { profile, isAdmin, isPi } = useAuth()
@@ -133,7 +139,7 @@ export default function MembersPage() {
       const invite = await api.sendInvite(inviteEmail, inviteName, profile)
       setInvites((prev) => [invite, ...prev])
       toast.success(
-        `Invite sent to ${inviteEmail}. If they don't see it, check spam — see Settings for why that happens.`,
+        `Invite sent to ${inviteEmail}. They can click the email link, or paste the code on the PEARL sign-in page.`,
       )
       setInviteName('')
       setInviteEmail('')
@@ -148,7 +154,7 @@ export default function MembersPage() {
     setSaving(inv.id)
     try {
       await auth.inviteMember(inv.email, inv.full_name ?? '')
-      toast.success(`Invite re-sent to ${inv.email}.`)
+      toast.success(`Invite re-sent to ${inv.email}. They can use the link or the email code.`)
       resendCooldown.start(inv.id)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not resend that invite.')
@@ -161,7 +167,7 @@ export default function MembersPage() {
     setSaving(target.id)
     try {
       await auth.inviteMember(target.email, target.full_name)
-      toast.success(`Sign-in email sent to ${target.email}.`)
+      toast.success(`Sign-in email sent to ${target.email}. They can use the link or the email code.`)
       resendCooldown.start(target.id)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not send that email.')
@@ -441,7 +447,7 @@ export default function MembersPage() {
         </h2>
         <p className="mb-3 text-xs text-ink-500 dark:text-ink-400">
           {MODE === 'cloud'
-            ? 'Sends a one-click sign-in link. They still have to open it to actually create the account — there\'s no way around that without a password to hand them — but it saves them finding the app themselves. It\'s recorded below the moment you send it, so it can\'t quietly disappear.'
+            ? 'Sends a PEARL sign-in email. The recipient can click the link, or copy the short code from the email into the PEARL sign-in page. The invite is recorded below the moment you send it, so it cannot quietly disappear.'
             : 'Demo mode has no email to send — anyone can just sign up directly from the login page instead.'}
         </p>
         <form onSubmit={(e) => void sendInvite(e)} className="flex flex-wrap items-end gap-2">
@@ -553,7 +559,7 @@ export default function MembersPage() {
                     {saving === m.id ? <Spinner /> : <Mail className="h-4 w-4" />}
                     {resendCooldown.secondsLeft(m.id) > 0
                       ? `Email in ${resendCooldown.secondsLeft(m.id)}s`
-                      : 'Send email'}
+                      : 'Send code/link'}
                   </button>
                   <button
                     className="btn-primary py-1.5"
@@ -633,6 +639,7 @@ export default function MembersPage() {
               const piProtected = Boolean(m.is_pi && !isPi)
               const accessLocked = isLastAdmin || piProtected
               const avatarKey = m.avatar_key ?? localAvatarKey(m.id)
+              const isDeveloper = isDeveloperProfile(m)
               return (
                 <div key={m.id} className="relative grid grid-cols-[minmax(260px,1fr)_220px_132px_48px] items-center gap-3 border-b border-ink-100 px-4 py-2.5 last:border-b-0 hover:bg-ink-50/70 dark:border-ink-800 dark:hover:bg-ink-900/45">
                   <div className="flex min-w-0 items-center gap-3">
@@ -674,8 +681,16 @@ export default function MembersPage() {
                       <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-50" title={m.full_name}>
                         {m.full_name}
                         {m.id === profile?.id && <span className="ml-2 text-xs font-normal text-ink-400">you</span>}
+                        {isDeveloper && (
+                          <span className="ml-2 rounded-full bg-pearl-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-pearl-700 ring-1 ring-pearl-600/20 dark:bg-pearl-500/10 dark:text-pearl-300 dark:ring-pearl-400/20">
+                            Developer
+                          </span>
+                        )}
                       </p>
-                      <p className="truncate text-xs text-ink-500" title={m.email}>{m.email}</p>
+                      <p className="truncate text-xs text-ink-500" title={m.email}>
+                        {m.email}
+                        {isDeveloper && <span className="ml-1 text-pearl-600 dark:text-pearl-300">- bug reports</span>}
+                      </p>
                     </div>
                   </div>
                   <div className="min-w-0">
@@ -793,7 +808,7 @@ export default function MembersPage() {
                         />
                         <MenuAction
                           icon={<Mail className="h-3.5 w-3.5" />}
-                          label={resendCooldown.secondsLeft(m.id) > 0 ? `Email in ${resendCooldown.secondsLeft(m.id)}s` : 'Email sign-in link'}
+                          label={resendCooldown.secondsLeft(m.id) > 0 ? `Email in ${resendCooldown.secondsLeft(m.id)}s` : 'Email code/link'}
                           disabled={saving === m.id || resendCooldown.secondsLeft(m.id) > 0}
                           onClick={() => { setActionMenuFor(null); void sendMemberLink(m) }}
                         />
