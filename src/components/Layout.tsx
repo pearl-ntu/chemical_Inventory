@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Bug,
   ChevronDown,
   ChevronsUpDown,
   Database,
@@ -32,36 +31,11 @@ type SidebarWidth = 'compact' | 'comfortable' | 'wide'
 
 const WORKSPACE_STORAGE_KEY = 'pearl.workspace_mode'
 const SIDEBAR_WIDTH_STORAGE_KEY = 'pearl.sidebar_width'
-const DEVELOPER_EMAIL = 'abedisyedaliabbas@gmail.com'
 const SHARED_WORKSPACE_PATHS = new Set(['/analytics', '/activity'])
 const SIDEBAR_WIDTHS: Record<SidebarWidth, string> = {
   compact: 'w-60',
   comfortable: 'w-72',
   wide: 'w-80',
-}
-
-function bugReportHref(
-  profile: { full_name: string; email: string } | null | undefined,
-  pathname: string,
-) {
-  const body = [
-    'Hi Syed,',
-    '',
-    'I found a PEARL bug:',
-    '',
-    'What happened:',
-    '',
-    'What I expected:',
-    '',
-    'Steps to reproduce:',
-    '1. ',
-    '',
-    `Page: ${pathname}`,
-    `User: ${profile ? `${profile.full_name} <${profile.email}>` : 'Not signed in'}`,
-    `Browser: ${typeof navigator === 'undefined' ? 'Unknown' : navigator.userAgent}`,
-  ].join('\n')
-
-  return `mailto:${DEVELOPER_EMAIL}?subject=${encodeURIComponent('PEARL bug report')}&body=${encodeURIComponent(body)}`
 }
 
 function storedWorkspaceMode(): WorkspaceMode {
@@ -227,7 +201,6 @@ function UserMenu() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
-  const location = useLocation()
 
   useEffect(() => {
     if (!open) return
@@ -299,10 +272,10 @@ function UserMenu() {
               className="nav-link w-full"
               onClick={() => {
                 setOpen(false)
-                window.location.href = bugReportHref(profile, location.pathname)
+                navigate('/contact-developer')
               }}
             >
-              <Bug className="h-4 w-4" /> Report bug
+              <MessageSquare className="h-4 w-4" /> Contact developer
             </button>
             <button
               className="nav-link w-full text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-500/10"
@@ -324,7 +297,7 @@ function SidebarContent({
   onNavigate?: () => void
   showWorkspaceSwitch?: boolean
 }) {
-  const { profile, isAdmin, isPi } = useAuth()
+  const { isAdmin, isPi } = useAuth()
   const location = useLocation()
   const mode = workspaceFromPath(location.pathname)
   const links = mode === 'computational' ? COMPUTATIONAL_NAV : NAV
@@ -378,16 +351,6 @@ function SidebarContent({
             <Users className="h-4 w-4" /> Members
           </NavLink>
         )}
-        <button
-          type="button"
-          className="nav-link w-full"
-          onClick={() => {
-            window.location.href = bugReportHref(profile, location.pathname)
-            onNavigate?.()
-          }}
-        >
-          <Bug className="h-4 w-4" /> Report bug
-        </button>
         <NavLink
           to="/contact-developer"
           onClick={onNavigate}

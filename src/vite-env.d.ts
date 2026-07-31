@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_ALLOWED_EMAIL_DOMAINS?: string
   readonly VITE_LAB_NAME?: string
   readonly VITE_LAB_SUBTITLE?: string
+  readonly VITE_FORMSPREE_ENDPOINT?: string
 }
 
 interface ImportMeta {
