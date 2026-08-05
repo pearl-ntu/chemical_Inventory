@@ -4,6 +4,7 @@ import { LazyMolfileSvgRenderer } from '../components/LazyStructure'
 import { PageHeader } from '../components/Layout'
 import { EmptyState, LoadingScreen, MultiSelect, SearchInput } from '../components/ui'
 import { useInventory } from '../context/InventoryContext'
+import { useToast } from '../context/ToastContext'
 import { api } from '../lib/api'
 import { containerDeepLink, locationDeepLink, memberDeepLink, qrDataUrl } from '../lib/qr'
 import type { Chemical, Profile } from '../lib/types'
@@ -54,9 +55,12 @@ function matchesLabel(item: Pick<PrintableLabel, 'title' | 'subtitle' | 'detail'
  * Printable QR stickers. Container labels open records, location labels filter
  * shelves/cabinets, and member labels can prefill the responsible person.
  */
+const MAX_LABELS_AT_ONCE = 300
+
 export default function LabelsPage() {
   const { chemicals, loading } = useInventory()
   const labLocations = useLabLocations(chemicals)
+  const toast = useToast()
 
   const [mode, setMode] = useState<LabelMode>('container')
   const [q, setQ] = useState('')
@@ -200,7 +204,13 @@ export default function LabelsPage() {
             )}
             <button
               className="btn-secondary"
-              onClick={() => setPicked(new Set(allLabels.map((item) => item.id)))}
+              onClick={() => {
+                const capped = allLabels.slice(0, MAX_LABELS_AT_ONCE)
+                setPicked(new Set(capped.map((item) => item.id)))
+                if (allLabels.length > MAX_LABELS_AT_ONCE) {
+                  toast.error(`Selected the first ${MAX_LABELS_AT_ONCE} of ${allLabels.length} — printing more than that in one batch would freeze the page. Narrow your search or location filter, then select all again for the rest.`)
+                }
+              }}
               disabled={allLabels.length === 0}
             >
               Select all {allLabels.length}
