@@ -42,6 +42,10 @@ export interface Chemical {
   mol_weight: number | null
   /** MDL Molfile (V3000) from the built-in 2D structure editor — null if never drawn. */
   structure_molfile: string | null
+  /** Cached PubChem CID, resolved from CAS/name — lets structure search use
+   *  PubChem's own substructure index for rows that never got a hand-drawn
+   *  structure_molfile. Null until enrichment runs. */
+  pubchem_cid: number | null
   /** An optional drawn synthesis scheme (RXN format) — null if never drawn. */
   reaction_rxnfile: string | null
   /** Path into the delivery-photos storage bucket (cloud) or a data URL

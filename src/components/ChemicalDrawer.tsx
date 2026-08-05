@@ -299,15 +299,15 @@ export function ChemicalDrawer({
                   <Molecule3DViewer sdf={viewerSdf} coordinates={sdf3d ? '3d' : '2d'} />
                 ) : c.structure_molfile ? (
                   <Suspense fallback={<Spinner className="h-5 w-5 text-ink-300" />}>
-                    <LazyMolfileSvgRenderer molfile={c.structure_molfile} width={220} height={150} />
+                    <LazyMolfileSvgRenderer molfile={c.structure_molfile} width={260} height={180} />
                   </Suspense>
                 ) : pubchemImageOk ? (
                   <PubChemStructureImage
                     cas={c.cas}
                     name={c.name}
-                    cid={info?.cid}
+                    cid={info?.cid ?? c.pubchem_cid}
                     alt={`Structure of ${c.name}`}
-                    className="max-h-36 w-auto object-contain dark:brightness-95 dark:invert-[.92] dark:hue-rotate-180"
+                    className="max-h-56 w-auto object-contain dark:brightness-95 dark:invert-[.92] dark:hue-rotate-180"
                     onExhausted={() => setPubchemImageOk(false)}
                   />
                 ) : (

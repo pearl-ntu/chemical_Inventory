@@ -201,6 +201,66 @@ export async function lookupBySmiles(smiles: string): Promise<PubChemInfo | null
   return result
 }
 
+/**
+ * Resolves a compound's PubChem CID from CAS or name — the cheap half of
+ * structure enrichment (formula/weight/image already share this same
+ * candidate order elsewhere in this file).
+ */
+export async function lookupCid(cas: string | null, name: string | null): Promise<number | null> {
+  const info = await lookup(cas, name)
+  return info?.cid ?? null
+}
+
+async function pollListKey(listKey: string, maxRecords: number): Promise<Response> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    const res = await fetch(`${BASE}/compound/listkey/${listKey}/cids/JSON?MaxRecords=${maxRecords}`, {
+      headers: { Accept: 'application/json' },
+    })
+    if (res.status !== 202) return res
+  }
+  throw new Error('PubChem search is still running — try again in a moment')
+}
+
+/**
+ * PubChem's fast-search endpoints run as background jobs for anything
+ * non-trivial: a first request can come back 202 with a ListKey instead of
+ * results, which has to be polled until it resolves.
+ */
+async function runCidSearch(pathAndQuery: string, maxRecords: number): Promise<Set<number> | null> {
+  try {
+    let res = await fetch(`${BASE}/${pathAndQuery}`, { headers: { Accept: 'application/json' } })
+    if (res.status === 202) {
+      const pending = (await res.json()) as { Waiting?: { ListKey?: string } }
+      const listKey = pending.Waiting?.ListKey
+      if (!listKey) return null
+      res = await pollListKey(listKey, maxRecords)
+    }
+    if (!res.ok) return null
+    const json = (await res.json()) as { IdentifierList?: { CID?: number[] } }
+    return new Set(json.IdentifierList?.CID ?? [])
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Every PubChem CID whose structure contains the query as a substructure.
+ * Returns null (not an empty set) when the search itself failed/timed out,
+ * so callers can tell "no matches" apart from "couldn't search."
+ */
+export async function substructureSearchCids(smiles: string, maxRecords = 20000): Promise<Set<number> | null> {
+  return runCidSearch(`compound/fastsubstructure/smiles/${encodeURIComponent(smiles)}/cids/JSON?MaxRecords=${maxRecords}`, maxRecords)
+}
+
+/** Every PubChem CID with the exact same connectivity as the query. */
+export async function exactSearchCids(smiles: string, maxRecords = 20000): Promise<Set<number> | null> {
+  return runCidSearch(
+    `compound/fastidentity/smiles/${encodeURIComponent(smiles)}/cids/JSON?identity_type=same_connectivity&MaxRecords=${maxRecords}`,
+    maxRecords,
+  )
+}
+
 /** Safety Data Sheet search, scoped to the supplier when we know it. */
 export function sdsSearchUrl(name: string, cas: string | null, supplier: string | null): string {
   const terms = [name, cas, supplier, 'safety data sheet'].filter(Boolean).join(' ')

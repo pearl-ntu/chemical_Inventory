@@ -105,6 +105,7 @@ function seedChemicals(): Chemical[] {
     mol_weight: null,
     structure_molfile: null,
     reaction_rxnfile: null,
+    pubchem_cid: null,
     delivery_photo_path: null,
     sds_url: null,
     coa_url: null,

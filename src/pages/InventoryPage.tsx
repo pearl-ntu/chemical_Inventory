@@ -16,9 +16,9 @@ import { ChemicalForm } from '../components/ChemicalForm'
 import { HazardBadges } from '../components/HazardBadges'
 import { ImportDialog } from '../components/ImportDialog'
 import { PageHeader } from '../components/Layout'
-import { LazyMolfileSvgRenderer } from '../components/LazyStructure'
+import { LazyMolfileSvgRenderer, LazyStructureEditorDialog } from '../components/LazyStructure'
 import { PubChemStructureImage } from '../components/PubChemStructureImage'
-import { StructureEditorDialog, type DrawnStructure } from '../components/StructureEditor'
+import type { DrawnStructure } from '../components/StructureEditor'
 import { ConfirmDialog, EmptyState, LoadingScreen, MultiSelect, SearchInput } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useInventory } from '../context/InventoryContext'
@@ -37,6 +37,7 @@ import {
   type ChemicalInput,
 } from '../lib/types'
 import { structureMatches } from '../lib/structureSearch'
+import * as pubchem from '../lib/pubchem'
 import {
   cx,
   download,
@@ -56,18 +57,19 @@ function ChemicalThumbnail({ chemical }: { chemical: Chemical }) {
   useEffect(() => setImageOk(true), [chemical.cas, chemical.name])
 
   return (
-    <div className="viz-root flex h-10 w-14 items-center justify-center overflow-hidden rounded bg-white ring-1 ring-ink-200 dark:ring-ink-700">
+    <div className="viz-root flex h-16 w-24 items-center justify-center overflow-hidden rounded bg-white ring-1 ring-ink-200 dark:ring-ink-700">
       {chemical.structure_molfile ? (
         <Suspense fallback={null}>
-          <LazyMolfileSvgRenderer molfile={chemical.structure_molfile} width={56} height={40} />
+          <LazyMolfileSvgRenderer molfile={chemical.structure_molfile} width={92} height={62} />
         </Suspense>
       ) : imageOk ? (
         <PubChemStructureImage
           cas={chemical.cas}
           name={chemical.name}
-          size="small"
+          cid={chemical.pubchem_cid}
+          size="large"
           alt=""
-          className="max-h-10 max-w-14 object-contain dark:brightness-95 dark:invert-[.92] dark:hue-rotate-180"
+          className="max-h-16 max-w-24 object-contain dark:brightness-95 dark:invert-[.92] dark:hue-rotate-180"
           onExhausted={() => setImageOk(false)}
         />
       ) : (
@@ -102,6 +104,54 @@ export default function InventoryPage() {
   const [structureOpen, setStructureOpen] = useState(false)
   const [structureQuery, setStructureQuery] = useState<DrawnStructure | null>(null)
   const [structureMode, setStructureMode] = useState<'substructure' | 'exact'>('substructure')
+  const [structureMatchIds, setStructureMatchIds] = useState<Set<string> | null>(null)
+  const [structureSearching, setStructureSearching] = useState(false)
+
+  // Two structure sources feed a search: rows with a hand-drawn
+  // structure_molfile (compared locally via openchemlib — loads its ~1MB
+  // chemistry data on first call, never on page load) and everything else,
+  // which was bulk-imported/registered without one and only has a name/CAS.
+  // For the second group we ask PubChem to run the actual substructure
+  // search and match its CID hits against each row's cached pubchem_cid,
+  // instead of silently treating "no molfile" as "no match."
+  useEffect(() => {
+    if (!structureQuery) {
+      setStructureMatchIds(null)
+      return
+    }
+    let cancelled = false
+    setStructureSearching(true)
+    ;(async () => {
+      const [localIds, pubchemCids] = await Promise.all([
+        (async () => {
+          const ids = new Set<string>()
+          for (const c of chemicals) {
+            if (c.structure_molfile && (await structureMatches(structureQuery.molfile, c.structure_molfile, structureMode))) {
+              ids.add(c.id)
+            }
+          }
+          return ids
+        })(),
+        structureMode === 'exact'
+          ? pubchem.exactSearchCids(structureQuery.smiles)
+          : pubchem.substructureSearchCids(structureQuery.smiles),
+      ])
+      if (cancelled) return
+      const ids = new Set(localIds)
+      if (pubchemCids) {
+        for (const c of chemicals) {
+          if (c.pubchem_cid && pubchemCids.has(c.pubchem_cid)) ids.add(c.id)
+        }
+      } else {
+        toast.error('Could not reach PubChem for structure search — showing matches from locally drawn structures only.')
+      }
+      setStructureMatchIds(ids)
+      setStructureSearching(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [structureQuery, structureMode, chemicals, toast])
 
   // Deep link from a scanned QR sticker: ?code=PEARL-0042 opens that record.
   useEffect(() => {
@@ -184,7 +234,7 @@ export default function InventoryPage() {
       if (filters.owner.length && !filters.owner.includes(c.owner ?? '')) return false
       if (filters.status.length && !filters.status.includes(c.status)) return false
       if (filters.hazard.length && !filters.hazard.some((h) => c.hazards.includes(h))) return false
-      if (structureQuery && !structureMatches(structureQuery.molfile, c.structure_molfile, structureMode)) return false
+      if (structureQuery && !structureMatchIds?.has(c.id)) return false
       return true
     })
 
@@ -198,7 +248,7 @@ export default function InventoryPage() {
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir
       return String(av).localeCompare(String(bv), 'en', { numeric: true, sensitivity: 'base' }) * dir
     })
-  }, [chemicals, filters, sort, structureMode, structureQuery])
+  }, [chemicals, filters, sort, structureQuery, structureMatchIds])
 
   useEffect(() => setPage(0), [filters, sort])
 
@@ -356,6 +406,7 @@ export default function InventoryPage() {
               <option value="exact">Exact structure</option>
             </select>
           )}
+          {structureSearching && <span className="text-xs text-ink-400">Matching structures…</span>}
           {activeFilterCount > 0 && (
             <button
               className="btn-ghost"
@@ -565,15 +616,19 @@ export default function InventoryPage() {
       />
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
 
-      <StructureEditorDialog
-        open={structureOpen}
-        initialMolfile={structureQuery?.molfile}
-        onClose={() => setStructureOpen(false)}
-        onConfirm={(structure) => {
-          setStructureQuery(structure)
-          setStructureOpen(false)
-        }}
-      />
+      {structureOpen && (
+        <Suspense fallback={null}>
+          <LazyStructureEditorDialog
+            open={structureOpen}
+            initialMolfile={structureQuery?.molfile}
+            onClose={() => setStructureOpen(false)}
+            onConfirm={(structure) => {
+              setStructureQuery(structure)
+              setStructureOpen(false)
+            }}
+          />
+        </Suspense>
+      )}
 
       <ConfirmDialog
         open={bulkEmpty}
