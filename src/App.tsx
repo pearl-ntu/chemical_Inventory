@@ -6,39 +6,43 @@ import { SiteCredit } from './components/SiteCredit'
 import { LoadingScreen } from './components/ui'
 import { useAuth } from './context/AuthContext'
 import { InventoryProvider } from './context/InventoryContext'
-import ActivityPage from './pages/ActivityPage'
-import AnalyticsPage from './pages/AnalyticsPage'
-import ComputationalActivityPage from './pages/ComputationalActivityPage'
-import ComputationalAnalyticsPage from './pages/ComputationalAnalyticsPage'
-import ComputationalDashboardPage from './pages/ComputationalDashboardPage'
-import ComputationalWorkbenchPage from './pages/ComputationalWorkbenchPage'
-import ComputationalJobsPage from './pages/ComputationalJobsPage'
-import ComputationalProtocolsPage from './pages/ComputationalProtocolsPage'
-import ContactDeveloperPage from './pages/ContactDeveloperPage'
 import DashboardPage from './pages/DashboardPage'
-import EquipmentPage from './pages/EquipmentPage'
-import FeedPage from './pages/FeedPage'
-import IncidentsPage from './pages/IncidentsPage'
-import SopsPage from './pages/SopsPage'
-import HpcSyncPage from './pages/HpcSyncPage'
-import HpcTutorialPage from './pages/HpcTutorialPage'
-import InventoryPage from './pages/InventoryPage'
-import LabelsPage from './pages/LabelsPage'
-import LocationsPage from './pages/LocationsPage'
-import MembersPage from './pages/MembersPage'
-import OperationsPage from './pages/OperationsPage'
 import PendingApprovalPage from './pages/PendingApprovalPage'
-import PiDashboardPage from './pages/PiDashboardPage'
-import PiAnalyticsPage from './pages/PiAnalyticsPage'
-import PiReportPage from './pages/PiReportPage'
-import PiMemberProfilePage from './pages/PiMemberProfilePage'
-import PiMembersPage from './pages/PiMembersPage'
-import PiProjectDetailPage from './pages/PiProjectDetailPage'
-import PiProjectsPage from './pages/PiProjectsPage'
-import ProjectMapPage from './pages/ProjectMapPage'
-import ResearchAssetsPage from './pages/ResearchAssetsPage'
-import SettingsPage from './pages/SettingsPage'
-import StocktakePage from './pages/StocktakePage'
+
+// Every route below except the dashboard (the universal landing page) is
+// lazy — nobody pays for the PI console, the computational workspace, or
+// the structure/CSV-heavy pages until they actually navigate there.
+const ActivityPage = lazy(() => import('./pages/ActivityPage'))
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
+const ComputationalActivityPage = lazy(() => import('./pages/ComputationalActivityPage'))
+const ComputationalAnalyticsPage = lazy(() => import('./pages/ComputationalAnalyticsPage'))
+const ComputationalDashboardPage = lazy(() => import('./pages/ComputationalDashboardPage'))
+const ComputationalWorkbenchPage = lazy(() => import('./pages/ComputationalWorkbenchPage'))
+const ComputationalJobsPage = lazy(() => import('./pages/ComputationalJobsPage'))
+const ComputationalProtocolsPage = lazy(() => import('./pages/ComputationalProtocolsPage'))
+const ContactDeveloperPage = lazy(() => import('./pages/ContactDeveloperPage'))
+const EquipmentPage = lazy(() => import('./pages/EquipmentPage'))
+const FeedPage = lazy(() => import('./pages/FeedPage'))
+const IncidentsPage = lazy(() => import('./pages/IncidentsPage'))
+const SopsPage = lazy(() => import('./pages/SopsPage'))
+const HpcSyncPage = lazy(() => import('./pages/HpcSyncPage'))
+const HpcTutorialPage = lazy(() => import('./pages/HpcTutorialPage'))
+const InventoryPage = lazy(() => import('./pages/InventoryPage'))
+const LabelsPage = lazy(() => import('./pages/LabelsPage'))
+const LocationsPage = lazy(() => import('./pages/LocationsPage'))
+const MembersPage = lazy(() => import('./pages/MembersPage'))
+const OperationsPage = lazy(() => import('./pages/OperationsPage'))
+const PiDashboardPage = lazy(() => import('./pages/PiDashboardPage'))
+const PiAnalyticsPage = lazy(() => import('./pages/PiAnalyticsPage'))
+const PiReportPage = lazy(() => import('./pages/PiReportPage'))
+const PiMemberProfilePage = lazy(() => import('./pages/PiMemberProfilePage'))
+const PiMembersPage = lazy(() => import('./pages/PiMembersPage'))
+const PiProjectDetailPage = lazy(() => import('./pages/PiProjectDetailPage'))
+const PiProjectsPage = lazy(() => import('./pages/PiProjectsPage'))
+const ProjectMapPage = lazy(() => import('./pages/ProjectMapPage'))
+const ResearchAssetsPage = lazy(() => import('./pages/ResearchAssetsPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const StocktakePage = lazy(() => import('./pages/StocktakePage'))
 
 // The login page pulls in `ogl` for its WebGL button shine — real weight
 // that a signed-in visitor should never pay for on every load, only someone
@@ -88,6 +92,7 @@ function AppContent() {
 
   return (
     <InventoryProvider>
+      <Suspense fallback={<div className="flex h-full items-center justify-center"><LoadingScreen label="Loading…" /></div>}>
       <Routes>
         {isPi && (
           <Route path="pi-dashboard" element={<PiConsoleLayout />}>
@@ -131,6 +136,7 @@ function AppContent() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
+      </Suspense>
     </InventoryProvider>
   )
 }

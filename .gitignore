@@ -20,3 +20,4 @@ supabase/.temp/
 ~$*.xlsx
 vite.config.ts.timestamp-*
 *.md
+_enrich_pubchem_cid.mjs

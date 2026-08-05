@@ -102,14 +102,6 @@ function matchMentionedMembers(rows: Array<{ id: string; full_name: string }>, b
   return ids
 }
 
-function nextStableId(rows: Array<{ stable_id: string | null }>): string {
-  const max = rows.reduce((highest, row) => {
-    const n = Number(row.stable_id?.replace(/\D/g, '') || 0)
-    return Number.isFinite(n) ? Math.max(highest, n) : highest
-  }, 0)
-  return `PEARL-RA-${String(max + 1).padStart(6, '0')}`
-}
-
 function memberAliases(member: Profile): string[] {
   return [member.id, member.full_name, member.email]
     .map((value) => value?.trim().toLowerCase())
@@ -590,12 +582,30 @@ export const api = {
 
   async listChemicals(): Promise<Chemical[]> {
     if (!IS_CLOUD) return localDb.chemicals()
-    const { data, error } = await requireSupabase()
+    const sb = requireSupabase()
+    // PostgREST caps a plain select at 1000 rows — paginate explicitly so a
+    // library past that size doesn't silently show a truncated inventory.
+    const PAGE_SIZE = 1000
+    const { count, error: countError } = await sb
       .from('chemicals')
-      .select('*')
-      .order('name', { ascending: true })
-    if (error) fail('Could not load the inventory', error)
-    return (data ?? []) as Chemical[]
+      .select('*', { count: 'exact', head: true })
+    if (countError) fail('Could not load the inventory', countError)
+    const pageStarts: number[] = []
+    for (let from = 0; from < (count ?? 0); from += PAGE_SIZE) pageStarts.push(from)
+    if (pageStarts.length === 0) return []
+    const pages = await Promise.all(
+      pageStarts.map(async (from) => {
+        const { data, error } = await sb
+          .from('chemicals')
+          .select('*')
+          .order('name', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1)
+        if (error) fail('Could not load the inventory', error)
+        return (data ?? []) as Chemical[]
+      }),
+    )
+    return pages.flat()
   },
 
   async createChemical(input: ChemicalInput, actor: Profile): Promise<Chemical> {
@@ -614,8 +624,9 @@ export const api = {
     const sb = requireSupabase()
     let code = input.code
     if (!code) {
-      const { data: codes } = await sb.from('chemicals').select('code')
-      code = nextCode(((codes ?? []) as Array<{ code: string }>).map((c) => c.code))
+      const { data: nextCodeValue, error: nextCodeError } = await sb.rpc('next_chemical_code')
+      if (nextCodeError) fail('Could not allocate a code', nextCodeError)
+      code = nextCodeValue as string
     }
 
     const { data, error } = await sb
@@ -690,8 +701,17 @@ export const api = {
     }
 
     const sb = requireSupabase()
-    const { data: codes } = await sb.from('chemicals').select('code')
-    const taken = ((codes ?? []) as Array<{ code: string }>).map((c) => c.code)
+    const { count } = await sb.from('chemicals').select('*', { count: 'exact', head: true })
+    const CODE_PAGE_SIZE = 1000
+    const codeStarts: number[] = []
+    for (let from = 0; from < (count ?? 0); from += CODE_PAGE_SIZE) codeStarts.push(from)
+    const codePages = await Promise.all(
+      codeStarts.map(async (from) => {
+        const { data } = await sb.from('chemicals').select('code').range(from, from + CODE_PAGE_SIZE - 1)
+        return ((data ?? []) as Array<{ code: string }>).map((c) => c.code)
+      }),
+    )
+    const taken = codePages.flat()
 
     const payload = rows.map((r) => {
       const code = r.code || nextCode(taken)
@@ -726,6 +746,7 @@ export const api = {
       mol_weight: null,
       structure_molfile: null,
       reaction_rxnfile: null,
+      pubchem_cid: null,
       delivery_photo_path: null,
       sds_url: null,
       coa_url: null,
@@ -1087,12 +1108,13 @@ export const api = {
       logLocal(null, 'created', `Added research asset ${row.title}`, actor)
       return row
     }
-    const { data: ids } = await requireSupabase().from('research_assets').select('stable_id')
+    const { data: nextStableIdValue, error: nextStableIdError } = await requireSupabase().rpc('next_research_asset_stable_id')
+    if (nextStableIdError) fail('Could not allocate a stable ID', nextStableIdError)
     const { data, error } = await requireSupabase()
       .from('research_assets')
       .insert({
         ...input,
-        stable_id: nextStableId((ids ?? []) as Array<{ stable_id: string | null }>),
+        stable_id: nextStableIdValue as string,
         created_by: actor.id,
         created_by_name: actor.full_name,
       })
@@ -1129,14 +1151,19 @@ export const api = {
       .eq('source_external_id', input.source_external_id)
       .limit(1)
     const stableId = (existingRows?.[0] as { stable_id?: string | null } | undefined)?.stable_id
-    const payload = stableId
-      ? { ...input, stable_id: stableId, created_by: actor.id, created_by_name: actor.full_name }
-      : {
-          ...input,
-          stable_id: nextStableId(await sb.from('research_assets').select('stable_id').then(({ data }) => (data ?? []) as Array<{ stable_id: string | null }>)),
-          created_by: actor.id,
-          created_by_name: actor.full_name,
-        }
+    let payload
+    if (stableId) {
+      payload = { ...input, stable_id: stableId, created_by: actor.id, created_by_name: actor.full_name }
+    } else {
+      const { data: nextStableIdValue, error: nextStableIdError } = await sb.rpc('next_research_asset_stable_id')
+      if (nextStableIdError) fail('Could not allocate a stable ID', nextStableIdError)
+      payload = {
+        ...input,
+        stable_id: nextStableIdValue as string,
+        created_by: actor.id,
+        created_by_name: actor.full_name,
+      }
+    }
     const { data, error } = await requireSupabase()
       .from('research_assets')
       .upsert(payload, { onConflict: 'created_by,source,source_external_id' })
