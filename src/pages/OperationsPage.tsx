@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Check, ClipboardList, Download, FileWarning, PackageSearch, Plus, Repeat2, ShieldAlert, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Check, ClipboardList, Download, ExternalLink, FileWarning, PackageSearch, Plus, Repeat2, Search, ShieldAlert, ShoppingCart, X } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { Field, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -8,7 +8,8 @@ import { useToast } from '../context/ToastContext'
 import { api } from '../lib/api'
 import { HAZARDS, type Chemical, type ChemicalRequest, type ChemicalRequestInput } from '../lib/types'
 import { useLabLocations } from '../lib/useLabLocations'
-import { download, formatDate, formatSize, todayISO } from '../lib/utils'
+import { download, formatDate, formatSize, todayISO, uniqueSorted } from '../lib/utils'
+import * as pubchem from '../lib/pubchem'
 
 const INCOMPATIBLE: Array<[string, string, string]> = [
   ['Flammable', 'Oxidising', 'Fire risk'],
@@ -21,12 +22,25 @@ function active(c: Chemical) {
   return c.status !== 'empty' && c.status !== 'disposed'
 }
 
-function Card({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function Card({
+  title,
+  icon,
+  actions,
+  children,
+}: {
+  title: string
+  icon: React.ReactNode
+  actions?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <section className="card overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-4 py-2.5 dark:border-ink-800 dark:bg-ink-950/50">
-        <span className="text-pearl-600">{icon}</span>
-        <h2 className="text-sm font-semibold text-ink-800 dark:text-ink-100">{title}</h2>
+      <div className="flex items-center justify-between gap-2 border-b border-ink-200 bg-ink-50 px-4 py-2.5 dark:border-ink-800 dark:bg-ink-950/50">
+        <div className="flex items-center gap-2">
+          <span className="text-pearl-600">{icon}</span>
+          <h2 className="text-sm font-semibold text-ink-800 dark:text-ink-100">{title}</h2>
+        </div>
+        {actions}
       </div>
       <div className="p-4">{children}</div>
     </section>
@@ -47,6 +61,27 @@ export default function OperationsPage() {
     notes: '',
   })
   const [busy, setBusy] = useState(false)
+  const requestFormRef = useRef<HTMLDivElement>(null)
+
+  // What the "chemical name or CAS" field suggests as you type — every
+  // distinct name/CAS already in the inventory, so reordering an existing
+  // reagent is pick-not-retype instead of hoping the free text matches
+  // exactly. Genuinely new reagents (not in inventory yet) still just get
+  // typed in; the datalist only ever suggests, never restricts.
+  const knownReagents = useMemo(() => {
+    const byKey = new Map<string, Chemical>()
+    for (const c of chemicals) {
+      if (c.name && !byKey.has(c.name)) byKey.set(c.name, c)
+      if (c.cas && !byKey.has(c.cas)) byKey.set(c.cas, c)
+    }
+    return byKey
+  }, [chemicals])
+  const reagentSuggestions = useMemo(() => uniqueSorted([...knownReagents.keys()]), [knownReagents])
+
+  function startRequest(defaults: Partial<ChemicalRequestInput>) {
+    setRequestForm((f) => ({ ...f, ...defaults }))
+    requestFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   async function loadRequests() {
     try {
@@ -134,6 +169,7 @@ export default function OperationsPage() {
 
   const pendingRequests = requests.filter((request) => request.status === 'pending')
   const myRequests = profile ? requests.filter((request) => request.requested_by === profile.id) : []
+  const purchaseList = requests.filter((request) => request.status === 'approved')
 
   async function submitRequest() {
     if (!profile || !canEdit) return
@@ -169,6 +205,25 @@ export default function OperationsPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  function exportPurchaseList() {
+    if (purchaseList.length === 0) return toast.error('Nothing approved for purchase yet.')
+    const rows = purchaseList.map((r) => ({
+      Chemical: r.chemical_name_or_cas,
+      Quantity: r.quantity ?? '',
+      Supplier: r.supplier ?? '',
+      'Project / justification': r.justification_project ?? '',
+      'Requested by': r.requested_by_name ?? '',
+      'Approved by': r.decided_by_name ?? '',
+      Notes: r.notes ?? '',
+    }))
+    const csv = [
+      Object.keys(rows[0]).join(','),
+      ...rows.map((r) => Object.values(r).map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+    ].join('\n')
+    download(`pearl-purchase-list-${todayISO()}.csv`, csv, 'text/csv;charset=utf-8')
+    toast.success(`Exported ${rows.length} item${rows.length === 1 ? '' : 's'} to purchase.`)
   }
 
   function exportAudit() {
@@ -240,10 +295,30 @@ export default function OperationsPage() {
 
       <div className="grid gap-4 xl:grid-cols-2">
         {canEdit && (
+          <div ref={requestFormRef}>
           <Card title="Request chemical" icon={<Plus className="h-4 w-4" />}>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Chemical name or CAS" required>
-                <input className="input" value={requestForm.chemical_name_or_cas} onChange={(e) => setRequestForm((f) => ({ ...f, chemical_name_or_cas: e.target.value }))} placeholder="acetone, 67-64-1..." />
+              <Field label="Chemical name or CAS" required hint="Pick an existing reagent to reorder it, or type a new one.">
+                <input
+                  className="input"
+                  list="reagent-suggestions"
+                  value={requestForm.chemical_name_or_cas}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    const match = knownReagents.get(value)
+                    setRequestForm((f) => ({
+                      ...f,
+                      chemical_name_or_cas: value,
+                      supplier: !f.supplier && match?.supplier ? match.supplier : f.supplier,
+                    }))
+                  }}
+                  placeholder="Start typing to see existing reagents, or enter something new..."
+                />
+                <datalist id="reagent-suggestions">
+                  {reagentSuggestions.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
               </Field>
               <Field label="Quantity">
                 <input className="input" value={requestForm.quantity ?? ''} onChange={(e) => setRequestForm((f) => ({ ...f, quantity: e.target.value }))} placeholder="2 x 2.5 L" />
@@ -255,6 +330,24 @@ export default function OperationsPage() {
                 <input className="input" value={requestForm.justification_project ?? ''} onChange={(e) => setRequestForm((f) => ({ ...f, justification_project: e.target.value }))} />
               </Field>
             </div>
+            {requestForm.chemical_name_or_cas.trim() && (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-lg border border-ink-200 bg-ink-50 p-2.5 dark:border-ink-800 dark:bg-ink-950/50">
+                <span className="mr-1 flex items-center gap-1 text-xs font-medium text-ink-600 dark:text-ink-300">
+                  <Search className="h-3.5 w-3.5" /> Check suppliers
+                </span>
+                {pubchem.SUPPLIER_SEARCHES.map((supplier) => (
+                  <a
+                    key={supplier.label}
+                    href={pubchem.supplierSearchUrl(supplier.terms, requestForm.chemical_name_or_cas.trim(), null)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="rounded-full border border-ink-300 bg-white px-2.5 py-1 text-xs font-medium text-ink-700 hover:bg-ink-100 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800"
+                  >
+                    {supplier.label} <ExternalLink className="ml-0.5 inline h-3 w-3 align-text-top opacity-60" />
+                  </a>
+                ))}
+              </div>
+            )}
             <Field label="Notes">
               <textarea className="input min-h-[72px]" value={requestForm.notes ?? ''} onChange={(e) => setRequestForm((f) => ({ ...f, notes: e.target.value }))} />
             </Field>
@@ -264,6 +357,7 @@ export default function OperationsPage() {
               </button>
             </div>
           </Card>
+          </div>
         )}
         <Card title={isAdmin ? 'Pending approvals' : 'My requests'} icon={<ClipboardList className="h-4 w-4" />}>
           <RequestList
@@ -274,8 +368,69 @@ export default function OperationsPage() {
             onStatus={(row, status, receivedId) => void setRequestStatus(row, status, receivedId)}
           />
         </Card>
+        <Card
+          title="Purchase list"
+          icon={<ShoppingCart className="h-4 w-4" />}
+          actions={
+            <button className="btn-secondary py-1.5 text-xs" onClick={exportPurchaseList}>
+              <Download className="h-3.5 w-3.5" /> Export CSV
+            </button>
+          }
+        >
+          {purchaseList.length === 0 ? (
+            <p className="text-sm text-ink-500">Nothing approved for purchase right now — approve a request above to add it here.</p>
+          ) : (
+            <div className="max-h-96 space-y-2 overflow-auto">
+              {purchaseList.map((row) => (
+                <div key={row.id} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink-900 dark:text-ink-50">{row.chemical_name_or_cas}</p>
+                      <p className="mt-1 text-xs text-ink-500">
+                        {row.quantity || 'quantity not specified'} - {row.supplier || 'supplier not specified'} - requested by {row.requested_by_name ?? 'unknown'}
+                      </p>
+                      {row.notes && <p className="mt-1 text-xs text-ink-500">{row.notes}</p>}
+                    </div>
+                    {isAdmin && (
+                      <button className="btn-primary shrink-0 py-1.5 text-xs" onClick={() => void setRequestStatus(row, 'received')} disabled={busy}>
+                        <Check className="h-3.5 w-3.5" /> Mark received
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
         <Card title="Low stock / reorder list" icon={<PackageSearch className="h-4 w-4" />}>
-          {table(data.reorder, (c) => `${formatSize(c)} - ${c.supplier ?? 'no supplier'} - ${c.reorder_priority}`)}
+          {data.reorder.length === 0 ? (
+            <p className="text-sm text-ink-500">Nothing needs attention here.</p>
+          ) : (
+            <div className="max-h-80 space-y-2 overflow-auto">
+              {data.reorder.slice(0, 30).map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-3 rounded-lg border border-ink-200 p-2.5 dark:border-ink-800">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink-900 dark:text-ink-50">{c.name}</p>
+                    <p className="text-xs text-ink-500">{formatSize(c)} - {c.supplier ?? 'no supplier'} - {c.reorder_priority}</p>
+                  </div>
+                  {canEdit && (
+                    <button
+                      className="btn-secondary shrink-0 py-1.5 text-xs"
+                      onClick={() =>
+                        startRequest({
+                          chemical_name_or_cas: c.name,
+                          supplier: c.supplier ?? '',
+                          notes: `Reorder — was ${formatSize(c)} at ${c.location ?? 'unassigned'}.`,
+                        })
+                      }
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Request
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
         <Card title="Expiry and opened-date alerts" icon={<AlertTriangle className="h-4 w-4" />}>
           {table([...data.expiring, ...data.openedLong], (c) =>
